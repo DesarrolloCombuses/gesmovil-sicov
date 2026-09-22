@@ -412,3 +412,33 @@ enabled = true
 # declarative_schema_path = "./database"
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
+
+# ---------------------------------------------------------------------------
+# Edge functions
+# ---------------------------------------------------------------------------
+# verify_jwt se declara aqui y no se deja al flag de la linea de comandos.
+#
+# Un 'supabase functions deploy sicov-gesmovil' sin --no-verify-jwt reactiva la
+# verificacion y la API deja de responder a GESMOVIL: Supabase la corta antes
+# de llegar al codigo y devuelve "Missing authorization header", que no se
+# parece a ningun error del contrato. Paso una vez. Declarado aqui, el flag
+# sobra y el olvido no rompe nada.
+
+[functions.sicov-gesmovil]
+# Se autentica con X-API-Key contra api_clientes, no con un JWT del proyecto.
+verify_jwt = false
+
+[functions.sicov-alistar]
+# Publica a proposito: el conductor no tiene usuario. La autorizacion la ponen
+# las comprobaciones de la propia funcion (placa de una ruta del SICOV,
+# conductor activo de la nomina, actividades del catalogo).
+verify_jwt = false
+
+[functions.sicov-mantenimiento]
+# Requiere sesion: un mantenimiento es la afirmacion de que un trabajo se
+# ejecuto, y el manual exige un responsable con nombre y cedula.
+verify_jwt = true
+
+[functions.sicov-sync-catalogos]
+# Solo con la service_role key. No es un endpoint publico.
+verify_jwt = true
