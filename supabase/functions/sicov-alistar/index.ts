@@ -8,11 +8,24 @@
  * Seguridad: verify_jwt=false (desplegar con --no-verify-jwt). No hay usuario
  * que autorizar, asi que el permiso es implicito y acotado: solo se puede
  * escribir sobre una placa que YA existe en flota_vehiculos y con actividades
- * que YA existen en el catalogo oficial. Nada de lo que llega del formulario
- * se guarda sin comprobarse contra la base.
+ * que YA existen en el catalogo, y nada de lo que llega del formulario se
+ * guarda sin comprobarse contra la base.
+ *
+ * Lo que este endpoint NO entrega es tan importante como lo que entrega.
+ * /formulario devolvia la nomina entera -- 298 cedulas con nombre completo --
+ * a cualquiera que pidiera la URL, sin credencial. Cedula y nombre de una
+ * persona identificada son dato personal bajo la Ley 1581 de 2012, y aqui no
+ * habia ni autorizacion ni finalidad que amparara publicarlos. Se quito.
+ *
+ * En su lugar el conductor digita su cedula y /conductor resuelve ESA sola.
+ * Se pasa de regalar 298 registros a responder uno, y hay que conocer una
+ * cedula valida de antemano para obtener algo. No es secreto perfecto: quien
+ * ya tiene la cedula de alguien puede confirmar si trabaja aqui. Pero deja de
+ * ser un volcado de la nomina, que era el problema real.
  *
  * Endpoints:
  *   GET  /sicov-alistar/formulario          datos para pintar el formulario
+ *   GET  /sicov-alistar/conductor?cedula=   resuelve el nombre de UNA cedula
  *   GET  /sicov-alistar/hoy?placa=ABC123    si esa placa ya se alisto hoy
  *   POST /sicov-alistar/registrar           graba el alistamiento
  *
@@ -104,18 +117,20 @@ const db = createClient(
 // GET /formulario
 // ---------------------------------------------------------------------------
 // Devuelve lo necesario para pintar el formulario en una sola peticion: la
-// flota, los conductores conocidos y el checklist oficial. Una peticion por
-// lista significaria tres viajes desde un movil con mala señal.
+// flota y el checklist. Una peticion por lista significaria varios viajes
+// desde un movil con mala señal.
 
 async function formulario(): Promise<Response> {
-  const [vehiculos, conductores, actividades, cfg] = await Promise.all([
+  const [vehiculos, actividades, cfg] = await Promise.all([
     db.from("flota_vehiculos").select("placa, interno, nombre_ruta").order("placa"),
-    // Los conductores son una ayuda de digitacion, no una restriccion: la
-    // tabla employees esta incompleta para conduccion (Sonar tiene muchos mas
-    // registrados), asi que el formulario permite escribir una cedula que no
-    // este en la lista. Si esta, se usa el nombre oficial y se evita el error
-    // de tipeo.
-    db.from("employees").select("cedula, nombre").eq("cargo", "CONDUCTOR").eq("activo", true).order("nombre"),
+    // Aqui NO va la lista de conductores: ver la cabecera. El nombre se
+    // resuelve de a uno en /conductor, contra la cedula que el conductor
+    // digita.
+    //
+    // Las placas si van completas. Una placa esta pintada en el costado del
+    // bus y en el techo: no identifica a una persona ni es dato reservado, y
+    // el formulario necesita el desplegable para que el conductor no teclee
+    // mal la suya a las 4 de la manana.
     db.from("sicov_cat_actividades")
       .select("id, descripcion, grupo, orden")
       .eq("activa", true)
@@ -137,10 +152,6 @@ async function formulario(): Promise<Response> {
       interno: txt(v.interno),
       ruta: txt(v.nombre_ruta),
     })),
-    conductores: ((conductores.data || []) as Fila[]).map((c) => ({
-      cedula: txt(c.cedula),
-      nombre: nombreLimpio(c.nombre),
-    })),
     actividades: listaActividades.map((a) => ({
       id: Number(a.id),
       descripcion: txt(a.descripcion),
@@ -161,6 +172,99 @@ async function formulario(): Promise<Response> {
         : []),
     ],
   });
+}
+
+// ---------------------------------------------------------------------------
+// GET /conductor?cedula=
+// ---------------------------------------------------------------------------
+// Resuelve el nombre de UNA cedula. Reemplaza la lista completa que devolvia
+// /formulario.
+//
+// Responde lo minimo: si esta, el nombre; si no, "no encontrado" y el
+// formulario deja escribirlo a mano. Nunca el cargo, el estado ni nada mas de
+// employees -- el formulario no lo necesita, y lo que no viaja no se filtra.
+//
+// El tope por IP no esta para frenar al conductor, esta para que nadie
+// reconstruya la nomina probando cedulas. 60 en 10 minutos deja holgado un
+// cambio de turno entero desde el wifi del patio (todos salen por la misma IP
+// publica, de ahi que el numero no sea 5) y hace inviable recorrer un rango.
+const CONSULTAS_MAX_IP = 60;
+const VENTANA_CONSULTAS_MS = 10 * 60 * 1000;
+
+const ENDPOINT_CONDUCTOR = "sicov-alistar/conductor";
+
+/** IP real del cliente. Detras del proxy de Supabase, la primera de la cadena. */
+function ipDe(req: Request): string | null {
+  const reenviada = req.headers.get("x-forwarded-for");
+  if (reenviada) {
+    const primera = reenviada.split(",")[0]?.trim();
+    if (primera) return primera;
+  }
+  return txt(req.headers.get("x-real-ip"));
+}
+
+/**
+ * Consultas de esta IP en la ventana. Se cuenta contra api_accesos y no en
+ * memoria porque cada peticion cae en una instancia nueva de la funcion: un
+ * contador en el proceso nace vacio siempre y no frena nada.
+ */
+async function consultasRecientes(ip: string): Promise<number> {
+  const desde = new Date(Date.now() - VENTANA_CONSULTAS_MS).toISOString();
+  const { count, error: errCount } = await db
+    .from("api_accesos")
+    .select("id", { count: "exact", head: true })
+    .eq("ip", ip)
+    .eq("endpoint", ENDPOINT_CONDUCTOR)
+    .gte("creado_en", desde);
+
+  if (errCount) {
+    // Si el contador falla, se deja pasar. Tumbar el alistamiento de toda la
+    // flota por un fallo de la auditoria seria peor que el riesgo que cubre.
+    console.error("[sicov-alistar] no se pudo contar consultas:", errCount.message);
+    return 0;
+  }
+  return count ?? 0;
+}
+
+async function buscarConductor(req: Request, url: URL): Promise<Response> {
+  const cedula = cedulaLimpia(url.searchParams.get("cedula"));
+  if (!cedula) return malo("Cedula invalida.");
+
+  const ip = ipDe(req);
+
+  if (ip && (await consultasRecientes(ip)) >= CONSULTAS_MAX_IP) {
+    return malo("Demasiadas consultas desde esta conexion. Espera unos minutos.", 429);
+  }
+
+  const { data } = await db
+    .from("employees")
+    .select("nombre")
+    .eq("cedula", cedula)
+    .eq("cargo", "CONDUCTOR")
+    .eq("activo", true)
+    .maybeSingle();
+
+  const nombre = nombreLimpio(data?.nombre);
+
+  // Queda rastro de cada consulta. Es el registro que la Ley 1581 espera de un
+  // tratamiento de datos personales: quien pregunto por quien y cuando.
+  // Se guarda la cedula consultada, no el nombre devuelto.
+  try {
+    await db.from("api_accesos").insert({
+      endpoint: ENDPOINT_CONDUCTOR,
+      status: nombre ? 200 : 404,
+      filas_devueltas: nombre ? 1 : 0,
+      ip,
+      user_agent: req.headers.get("user-agent")?.slice(0, 200) ?? null,
+    });
+  } catch (e) {
+    console.error("[sicov-alistar] no se pudo auditar la consulta:", e);
+  }
+
+  // 200 en ambos casos: que la cedula no este en la nomina no es un error del
+  // conductor. La tabla employees viene incompleta para conduccion, y el
+  // formulario acepta un nombre digitado.
+  return json({ success: true, encontrado: !!nombre, nombre });
 }
 
 // ---------------------------------------------------------------------------
@@ -356,10 +460,14 @@ Deno.serve(async (req) => {
 
   try {
     if (req.method === "GET" && accion === "formulario") return await formulario();
+    if (req.method === "GET" && accion === "conductor") return await buscarConductor(req, url);
     if (req.method === "GET" && accion === "hoy") return await yaAlistado(url);
     if (req.method === "POST" && accion === "registrar") return await registrar(req);
 
-    return malo("Ruta no encontrada. Disponibles: GET /formulario, GET /hoy, POST /registrar.", 404);
+    return malo(
+      "Ruta no encontrada. Disponibles: GET /formulario, GET /conductor, GET /hoy, POST /registrar.",
+      404,
+    );
   } catch (e) {
     console.error("[sicov-alistar] fallo atendiendo", accion, e);
     return malo("Error interno.", 500);
