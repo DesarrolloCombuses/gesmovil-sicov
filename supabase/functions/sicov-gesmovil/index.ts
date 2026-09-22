@@ -420,8 +420,11 @@ async function faltaHomologacion(
 
   return error(
     503,
+    // "los registros" y no "los alistamientos": el mismo mensaje lo usan los
+    // dos endpoints, y desde /mantenimientos hablar de alistamientos hace
+    // dudar de si se consulto lo que se queria.
     `Hay ${sinMapeo.length} actividad(es) sin homologar con el catalogo oficial de la Superintendencia ` +
-      `(${ejemplos}${resto}). Los alistamientos se estan registrando, pero no se pueden reportar hasta ` +
+      `(${ejemplos}${resto}). Los registros se estan capturando, pero no se pueden reportar hasta ` +
       `completar la homologacion.`,
   );
 }
