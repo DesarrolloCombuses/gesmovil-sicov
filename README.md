@@ -43,7 +43,11 @@ Lo que ya existía en el proyecto y **no se toca**:
 ## Piezas
 
 ```
-supabase/migrations/20260921120000_sicov_plataforma.sql   modelo de datos
+supabase/migrations/
+  20260921120000_sicov_plataforma.sql    modelo de datos
+  20260922100000_actividades_propias.sql catálogo propio + homologación
+supabase/seed-checklist.sql              las 40 actividades de COMBUSES
+supabase/configurar.sql                  plantilla de sicov_config
 supabase/functions/
   sicov-alistar/            registro de alistamientos (público, sin login)
   sicov-mantenimiento/      registro de mantenimientos (con login)
@@ -55,13 +59,39 @@ web/                        la PWA
   mantenimiento.html        formulario del taller
   manifest.webmanifest
   sw.js                     service worker — aquí vive la versión
+  README.md                 portada del repo público
   assets/                   app.css, comun.js, los dos JS, iconos
 scripts/
   generar-api-key.mjs       credencial de un consumidor
   generar-iconos.ps1        dibuja los PNG del manifest
+  publicar-pages.ps1        replica web/ al repo público de GitHub Pages
   publicar-web.ps1          sube la PWA con los Cache-Control correctos
   servir-local.ps1          servidor de pruebas en localhost
 ```
+
+Fuera del repo a propósito: los `*.local.sql` (cédula del responsable, hash de
+credenciales) y los PDF fuente. Ambos están en `.gitignore` desde antes del
+primer commit, porque el historial de git no se limpia después sin reescribirlo.
+
+## Los dos repositorios
+
+| Repo | Visibilidad | Qué lleva |
+|---|---|---|
+| [`gesmovil-sicov`](https://github.com/DesarrolloCombuses/gesmovil-sicov) | **privado** | todo: migraciones, funciones, scripts, y `web/` |
+| [`gesmovil-sicov-web`](https://github.com/DesarrolloCombuses/gesmovil-sicov-web) | **público** | solo el contenido de `web/`, para GitHub Pages |
+
+GitHub Pages no sirve desde un repo privado sin plan de pago, y hacer público
+el repo entero publicaría las migraciones, la lógica de las funciones y el
+contrato con GESMOVIL. Así que solo `web/` se replica, con
+`scripts/publicar-pages.ps1` (un `git subtree push`, que deja `index.html` en
+la raíz del repo público, que es donde Pages lo busca).
+
+El frontend es público de todos modos: es una página web, su código llega al
+navegador. Lo que importa es que no lleve nada que no deba — de ahí la
+comprobación del script, que falla si `web/` vuelve a leer la lista completa
+de conductores.
+
+La app queda en **https://desarrollocombuses.github.io/gesmovil-sicov-web/**
 
 ### Modelo de datos
 
@@ -312,6 +342,36 @@ que existe y con actividades del catálogo. El mantenimiento es distinto — es 
 afirmación de que un trabajo se ejecutó, y el manual exige un responsable con
 nombre y cédula. Un formulario anónimo no puede sostener eso.
 
+**El formulario no descarga la nómina.** La primera versión devolvía las 298
+cédulas con nombre completo en `GET /formulario`, a cualquiera que pidiera la
+URL, sin credencial. Cédula y nombre de una persona identificada son dato
+personal bajo la **Ley 1581 de 2012**, y no había autorización ni finalidad que
+amparara publicarlos.
+
+Ahora el conductor digita su cédula y `GET /conductor?cedula=` resuelve esa
+sola, devolviendo únicamente el nombre — nunca el cargo ni nada más de
+`employees`: lo que no viaja no se filtra. Se pasa de regalar 298 registros a
+responder uno, y hay que conocer una cédula válida de antemano para obtener
+algo.
+
+No es secreto perfecto: quien ya tenga la cédula de alguien puede confirmar si
+trabaja aquí. Pero deja de ser un volcado de la nómina, que era el problema.
+Encima van dos cosas más:
+
+- **Tope de 60 consultas por IP cada 10 minutos**, contado contra `api_accesos`
+  y no en memoria (cada petición cae en una instancia nueva de la función, así
+  que un contador en el proceso nace vacío y no frena nada). El número deja
+  holgado un cambio de turno entero desde el wifi del patio, donde todos salen
+  por la misma IP pública, y hace inviable recorrer un rango de cédulas.
+- **Auditoría de cada consulta**: qué cédula se preguntó, cuándo y desde dónde.
+  Se guarda la cédula consultada, no el nombre devuelto. Es el registro que la
+  Ley 1581 espera de un tratamiento de datos personales.
+
+Las placas sí van completas en `/formulario`. Una placa está pintada en el
+costado del bus y en el techo: no identifica a una persona ni es dato
+reservado, y el desplegable evita que el conductor teclee mal la suya a las 4
+de la mañana.
+
 **Tener cuenta no es estar autorizado.** `verify_jwt` solo prueba que hay una
 sesión del proyecto; quién puede registrar mantenimientos se comprueba además
 contra `sicov_usuarios`.
@@ -363,7 +423,7 @@ en una lista pública y antes de reportarlo.
   conductores** (verificado contra la función desplegada), y `flota_vehiculos`
   trae **135 placas** — con más rutas de las esperadas: AEROPUERTO, ZAMORA,
   ARANJUEZ - GUADALUPE y TERMINAL 313. El formulario igual acepta una cédula
-  que no esté en la lista: si está, usa el nombre oficial y evita el error de
+  que no esté en la nómina: si está, usa el nombre oficial y evita el error de
   tipeo.
 - **Errata del manual**, por si GESMOVIL pregunta: los ejemplos JSON de
   despachos tienen comas finales sobrantes (no son JSON válido); las tablas de
