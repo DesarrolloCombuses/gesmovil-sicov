@@ -1,0 +1,38 @@
+# Estado local del CLI de Supabase (ref del proyecto linkeado, version del CLI)
+supabase/.temp/
+
+# Nunca versionar credenciales. Las API keys de los consumidores solo existen
+# en claro en la salida de scripts/generar-api-key.mjs; la base guarda su hash.
+.env
+.env.*
+!.env.example
+
+# Archivos .local con datos reales. configurar.sql es la plantilla, con
+# placeholders; configurar.local.sql lleva la cedula y el nombre del
+# responsable designado -- dato personal de una persona identificada (Ley 1581
+# de 2012), que no tiene por que quedar en el historial de git. El historial no
+# se puede limpiar despues sin reescribirlo, asi que se excluye desde el
+# principio.
+*.local.sql
+*.local.js
+*.local.json
+
+# Sistema operativo y editores
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# Documentos fuente. Se quedan en el disco, no en el repo.
+#
+# La cotizacion de GESMOVIL es un documento comercial de un tercero, con
+# precios. El manual de APIs es material de la Supertransporte que no nos
+# corresponde redistribuir. Ninguno hace falta para construir ni desplegar
+# esto: lo que dicen ya esta destilado en el README, en los comentarios de las
+# migraciones y en el contrato de sicov-gesmovil.
+#
+# Se excluyen sobre todo porque el repositorio puede tener que volverse publico
+# (GitHub Pages no sirve desde un repo privado sin plan de pago), y entonces
+# irian con el. El historial de git no se limpia despues sin reescribirlo.
+*.pdf
