@@ -75,6 +75,29 @@ update sicov_config set valor = '<NOMBRES Y APELLIDOS DEL RESPONSABLE>', actuali
 
 
 -- ---------------------------------------------------------------------------
+-- Rutas cubiertas por el SICOV
+-- ---------------------------------------------------------------------------
+-- COMBUSES opera urbano e intermunicipal con la misma empresa, y el SICOV-OTPC
+-- cubre lo intermunicipal por carretera. Solo las placas de estas rutas
+-- aparecen en el formulario, y solo estas se aceptan al registrar: sin este
+-- filtro se alistarian buses urbanos que no le corresponden al reporte.
+--
+-- Tiene que coincidir EXACTO con flota_vehiculos.nombre_ruta. Varias rutas se
+-- separan por coma; los espacios alrededor no importan.
+
+insert into sicov_config (clave, valor, descripcion)
+values (
+  'rutas_sicov',
+  'AEROPUERTO',
+  'Rutas de flota_vehiculos.nombre_ruta cubiertas por el SICOV, separadas por coma.'
+)
+on conflict (clave) do update
+  set valor          = excluded.valor,
+      descripcion    = excluded.descripcion,
+      actualizado_en = now();
+
+
+-- ---------------------------------------------------------------------------
 -- 3. Catalogo de actividades  (PROVISIONAL -- leer antes de ejecutar)
 -- ---------------------------------------------------------------------------
 -- Lo correcto es traerlo de la maestra oficial con sicov-sync-catalogos, pero

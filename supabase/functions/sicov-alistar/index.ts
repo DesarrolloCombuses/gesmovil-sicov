@@ -19,9 +19,19 @@
  *
  * En su lugar el conductor digita su cedula y /conductor resuelve ESA sola.
  * Se pasa de regalar 298 registros a responder uno, y hay que conocer una
- * cedula valida de antemano para obtener algo. No es secreto perfecto: quien
- * ya tiene la cedula de alguien puede confirmar si trabaja aqui. Pero deja de
- * ser un volcado de la nomina, que era el problema real.
+ * cedula valida de antemano para obtener algo.
+ *
+ * Quien puede alistar:
+ *
+ *   - El conductor tiene que estar en employees con cargo CONDUCTOR y activo.
+ *     Un inactivo no alista, y una cedula desconocida tampoco. El nombre sale
+ *     SIEMPRE de la nomina: si se aceptara el digitado, un inactivo pondria
+ *     cualquier numero y el control no serviria para nada.
+ *
+ *   - El vehiculo tiene que ser de una ruta listada en sicov_config.rutas_sicov
+ *     (hoy AEROPUERTO). COMBUSES opera urbano e intermunicipal con la misma
+ *     empresa, y el SICOV-OTPC cubre lo intermunicipal: alistar los urbanos
+ *     mandaria al reporte vehiculos que no le corresponden.
  *
  * Endpoints:
  *   GET  /sicov-alistar/formulario          datos para pintar el formulario
@@ -114,6 +124,41 @@ const db = createClient(
 );
 
 // ---------------------------------------------------------------------------
+// Configuracion
+// ---------------------------------------------------------------------------
+
+type Config = Record<string, string | null>;
+
+async function leerConfig(): Promise<Config> {
+  const { data } = await db.from("sicov_config").select("clave, valor");
+  const cfg: Config = {};
+  for (const f of (data || []) as Fila[]) cfg[String(f.clave)] = txt(f.valor);
+  return cfg;
+}
+
+/**
+ * Rutas cuya flota entra al SICOV, separadas por coma en sicov_config.
+ *
+ * COMBUSES opera urbano e intermunicipal con la misma empresa, pero el
+ * SICOV-OTPC cubre lo intermunicipal por carretera. Alistar los buses urbanos
+ * aqui no solo sobra: mandaria al reporte vehiculos que no le corresponden.
+ *
+ * Va en configuracion y no en el codigo porque es una decision de operacion:
+ * el dia que entre otra ruta, se agrega una palabra a una fila, sin desplegar
+ * nada.
+ *
+ * Lista vacia = sin filtro. Es deliberado: si alguien borra la fila, es mejor
+ * mostrar de mas y que el formulario avise (ver 'faltante') que dejar al
+ * conductor con un desplegable vacio y sin explicacion.
+ */
+function rutasSicov(cfg: Config): string[] {
+  return (cfg.rutas_sicov || "")
+    .split(",")
+    .map((r) => r.trim())
+    .filter((r) => r !== "");
+}
+
+// ---------------------------------------------------------------------------
 // GET /formulario
 // ---------------------------------------------------------------------------
 // Devuelve lo necesario para pintar el formulario en una sola peticion: la
@@ -121,8 +166,16 @@ const db = createClient(
 // desde un movil con mala señal.
 
 async function formulario(): Promise<Response> {
-  const [vehiculos, actividades, cfg] = await Promise.all([
-    db.from("flota_vehiculos").select("placa, interno, nombre_ruta").order("placa"),
+  // La configuracion se lee primero: de ella sale que rutas entran, y no tiene
+  // sentido traer la flota entera para luego descartar dos tercios.
+  const cfgPrevia = await leerConfig();
+  const rutas = rutasSicov(cfgPrevia);
+
+  let consultaFlota = db.from("flota_vehiculos").select("placa, interno, nombre_ruta");
+  if (rutas.length > 0) consultaFlota = consultaFlota.in("nombre_ruta", rutas);
+
+  const [vehiculos, actividades] = await Promise.all([
+    consultaFlota.order("placa"),
     // Aqui NO va la lista de conductores: ver la cabecera. El nombre se
     // resuelve de a uno en /conductor, contra la cedula que el conductor
     // digita.
@@ -137,17 +190,15 @@ async function formulario(): Promise<Response> {
       .eq("aplica_alistamiento", true)
       .order("orden", { ascending: true, nullsFirst: false })
       .order("id"),
-    db.from("sicov_config").select("clave, valor"),
   ]);
 
-  const config: Record<string, string | null> = {};
-  for (const f of (cfg.data || []) as Fila[]) config[String(f.clave)] = txt(f.valor);
-
+  const config = cfgPrevia;
   const listaActividades = (actividades.data || []) as Fila[];
+  const listaVehiculos = (vehiculos.data || []) as Fila[];
 
   return json({
     success: true,
-    vehiculos: ((vehiculos.data || []) as Fila[]).map((v) => ({
+    vehiculos: listaVehiculos.map((v) => ({
       placa: txt(v.placa),
       interno: txt(v.interno),
       ruta: txt(v.nombre_ruta),
@@ -164,11 +215,23 @@ async function formulario(): Promise<Response> {
     // El formulario necesita saber si puede funcionar antes de que alguien lo
     // llene: sin catalogo no hay checklist, y sin responsable el registro no
     // cumple el manual. Mejor avisarlo arriba que fallar al enviar.
-    listo: listaActividades.length > 0 && !!config.responsable_num_id && !!config.responsable_nombre,
+    listo:
+      listaActividades.length > 0 &&
+      listaVehiculos.length > 0 &&
+      rutas.length > 0 &&
+      !!config.responsable_num_id &&
+      !!config.responsable_nombre,
     faltante: [
       ...(listaActividades.length === 0 ? ["catalogo de actividades sin sincronizar"] : []),
       ...(!config.responsable_num_id || !config.responsable_nombre
         ? ["responsable del proceso sin configurar en sicov_config"]
+        : []),
+      // Sin esta fila se mostraria la flota completa, urbanos incluidos, y el
+      // reporte acabaria con vehiculos que no le corresponden. Se avisa en vez
+      // de filtrar a ciegas.
+      ...(rutas.length === 0 ? ["rutas_sicov sin configurar en sicov_config"] : []),
+      ...(rutas.length > 0 && listaVehiculos.length === 0
+        ? [`ninguna placa en las rutas configuradas (${rutas.join(", ")})`]
         : []),
     ],
   });
@@ -236,15 +299,7 @@ async function buscarConductor(req: Request, url: URL): Promise<Response> {
     return malo("Demasiadas consultas desde esta conexion. Espera unos minutos.", 429);
   }
 
-  const { data } = await db
-    .from("employees")
-    .select("nombre")
-    .eq("cedula", cedula)
-    .eq("cargo", "CONDUCTOR")
-    .eq("activo", true)
-    .maybeSingle();
-
-  const nombre = nombreLimpio(data?.nombre);
+  const nombre = await nombreDeConductorHabilitado(cedula);
 
   // Queda rastro de cada consulta. Es el registro que la Ley 1581 espera de un
   // tratamiento de datos personales: quien pregunto por quien y cuando.
@@ -261,10 +316,37 @@ async function buscarConductor(req: Request, url: URL): Promise<Response> {
     console.error("[sicov-alistar] no se pudo auditar la consulta:", e);
   }
 
-  // 200 en ambos casos: que la cedula no este en la nomina no es un error del
-  // conductor. La tabla employees viene incompleta para conduccion, y el
-  // formulario acepta un nombre digitado.
-  return json({ success: true, encontrado: !!nombre, nombre });
+  // 200 en los dos casos: esto responde una pregunta, y "no habilitado" es una
+  // respuesta valida, no un fallo de la peticion. El bloqueo de verdad lo pone
+  // /registrar, no esta consulta.
+  return json({ success: true, habilitado: !!nombre, nombre });
+}
+
+/**
+ * Nombre del conductor si puede alistar, o null si no.
+ *
+ * Una sola consulta decide las tres cosas, y por eso no distingue el motivo:
+ * que la cedula no exista, que no sea conductor o que este inactivo dan el
+ * mismo null. Es intencionado por dos razones.
+ *
+ * La primera es que para el conductor los tres casos se resuelven igual: ir a
+ * que lo habiliten. Decirle cual de los tres es no le cambia nada.
+ *
+ * La segunda es que este endpoint es publico. Responder "existe pero esta
+ * inactivo" convertiria el formulario en una forma de averiguar si una persona
+ * trabaja aqui y en que situacion, sabiendo solo su cedula. Eso es dato
+ * personal (Ley 1581) y no hay ninguna razon para publicarlo.
+ */
+async function nombreDeConductorHabilitado(cedula: string): Promise<string | null> {
+  const { data } = await db
+    .from("employees")
+    .select("nombre")
+    .eq("cedula", cedula)
+    .eq("cargo", "CONDUCTOR")
+    .eq("activo", true)
+    .maybeSingle();
+
+  return nombreLimpio(data?.nombre);
 }
 
 // ---------------------------------------------------------------------------
@@ -305,38 +387,58 @@ async function registrar(req: Request): Promise<Response> {
     return malo("Body JSON invalido.");
   }
 
-  // --- Vehiculo: tiene que ser uno de la flota ---
+  // --- Vehiculo: de la flota, y de una ruta que entre al SICOV ---
   const placa = placaLimpia(payload.placa);
   if (!placa) return malo("Indica la placa del vehiculo.");
 
   const { data: veh } = await db
     .from("flota_vehiculos")
-    .select("placa")
+    .select("placa, nombre_ruta")
     .eq("placa", placa)
     .maybeSingle();
   if (!veh) return malo(`La placa ${placa} no esta registrada en la flota.`, 403);
+
+  // Que el desplegable solo ofrezca las rutas del SICOV no basta: quien envie
+  // el POST a mano puede poner cualquier placa de la flota. La lista que se
+  // muestra es comodidad; esta comprobacion es la regla.
+  const cfgRutas = await leerConfig();
+  const rutasPermitidas = rutasSicov(cfgRutas);
+  if (rutasPermitidas.length > 0 && !rutasPermitidas.includes(txt(veh.nombre_ruta) || "")) {
+    return malo(
+      `La placa ${placa} no pertenece a las rutas cubiertas por el SICOV (${rutasPermitidas.join(", ")}).`,
+      403,
+    );
+  }
 
   // --- Conductor ---
   const cedula = cedulaLimpia(payload.conductorCedula);
   if (!cedula) return malo("La cedula del conductor no es valida.");
 
-  // Si esta en employees se usa el nombre oficial: evita que el reporte
-  // salga con el nombre mal escrito. Si no esta, se acepta el digitado.
-  const { data: emp } = await db
-    .from("employees")
-    .select("nombre")
-    .eq("cedula", cedula)
-    .maybeSingle();
-
-  const nombreConductor = nombreLimpio(emp?.nombre) ?? nombreLimpio(payload.conductorNombre);
-  if (!nombreConductor) return malo("Indica el nombre del conductor.");
+  // El nombre sale SIEMPRE de la nomina, nunca del formulario. Dos motivos:
+  //
+  //   - Solo un conductor activo puede alistar. Aceptar un nombre digitado
+  //     dejaria la puerta abierta a que un inactivo escriba cualquier cedula y
+  //     pase: el control no serviria para nada.
+  //
+  //   - El reporte al regulador sale con el nombre oficial, escrito igual
+  //     siempre. Si el conductor teclea "Sergio Acevedo" y la nomina dice
+  //     "ACEVEDO GIRALDO SERGIO", va el de la nomina.
+  //
+  // payload.conductorNombre ya no se lee. El campo del formulario existe para
+  // que el conductor confirme que es el, no para que aporte el dato.
+  const nombreConductor = await nombreDeConductorHabilitado(cedula);
+  if (!nombreConductor) {
+    return malo(
+      "Esa cedula no corresponde a un conductor activo. Comunicate con Talento Humano para que te habiliten.",
+      403,
+    );
+  }
 
   // --- Responsable del proceso ---
   // Sale de la configuracion de la empresa, no del formulario: el conductor no
   // puede designar a un tercero como responsable de su propio alistamiento.
-  const { data: cfgFilas } = await db.from("sicov_config").select("clave, valor");
-  const cfg: Record<string, string | null> = {};
-  for (const f of (cfgFilas || []) as Fila[]) cfg[String(f.clave)] = txt(f.valor);
+  // Reusa la configuracion ya leida para validar la ruta: es la misma tabla.
+  const cfg = cfgRutas;
 
   if (!cfg.responsable_num_id || !cfg.responsable_nombre) {
     return malo(
