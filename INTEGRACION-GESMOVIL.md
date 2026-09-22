@@ -263,3 +263,22 @@ Lo que COMBUSES necesita de GESMOVIL para cerrar la integración:
 1. El catálogo oficial de actividades de alistamiento con sus ids (sección 8).
 2. Confirmación de que el consumo funciona con la credencial entregada.
 3. La IP o el rango de IP desde donde consumirán, si conviene restringirlo.
+4. **Si VIGIA 2 espera el NIT con dígito de verificación.** Hoy el campo `nit`
+   viaja como `890920397` (sin DV), porque el campo del manual es `nit` a
+   secas. El DV es `5`. Si hace falta enviarlo como `890920397-5`, se cambia en
+   la configuración de COMBUSES y basta.
+
+### Nota sobre la razón social
+
+La razón social correcta es **COMPAÑIA METROPOLITANA DE BUSES S.A.**, según la
+casilla 35 del RUT (formulario DIAN 141264854098, actualizado el 31 de julio de
+2026), coincidente con el RUES. La sigla registrada es **COMBUSES S.A.**
+
+La cotización de GESMOVIL identifica a la empresa como «COMPAÑIA METROPOLITANA
+DE BUSES Y CIA S.C.A.». Son formas jurídicas distintas —Sociedad Anónima frente
+a Sociedad en Comandita por Acciones— y conviene corregirlo antes de firmar el
+contrato de designación como Aliado Tecnológico, que debe llevar la razón
+social del RUT.
+
+Este dato viaja en cada mantenimiento reportado y el sujeto obligado que
+responde por su veracidad es COMBUSES.

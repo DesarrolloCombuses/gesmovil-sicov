@@ -12,32 +12,31 @@
 
 
 -- ---------------------------------------------------------------------------
--- 1. Datos de la empresa  (OBLIGATORIO -- VERIFICAR CONTRA EL RUT)
+-- 1. Datos de la empresa  (VERIFICADO CONTRA EL RUT)
 -- ---------------------------------------------------------------------------
--- Los valores de abajo salen del registro mercantil publico (RUES, consultado
--- el 21-sep-2026):
+-- Fuente: RUT de la DIAN, formulario 141264854098, actualizado el 31-jul-2026.
 --
---   NIT            890920397   (digito de verificacion 5, que NO va aqui)
---   Razon social   COMPAÑIA METROPOLITANA DE BUSES S.A.
---   Direccion      Calle 55 46-14 Of. 1204, Medellin
---   Estado RUES    activo
+--   Casilla 5    NIT            890920397   (DV 5, que NO va aqui)
+--   Casilla 35   Razon social   COMPAÑIA METROPOLITANA DE BUSES S.A.
+--   Casilla 37   Sigla          COMBUSES S.A.
+--   Casilla 41   Direccion      CL 55 46 14 OF 1204, Medellin
+--   Casilla 46   Actividad      4921 (transporte de pasajeros)
 --
--- Que es la empresa correcta esta confirmado por dos vias: el telefono del
--- registro coincide con el que publica combusessa.com, y las rutas que opera
--- (aeropuerto, Zamora, Aranjuez, Terminal Norte) son las mismas que estan en
--- flota_vehiculos.
+-- QUEDA RESUELTA LA DUDA QUE HABIA AQUI: la cotizacion de GESMOVIL dice
+-- "COMPAÑIA METROPOLITANA DE BUSES Y CIA S.C.A.". El RUT dice S.A., y coincide
+-- con el RUES. Son formas juridicas distintas (Sociedad Anonima vs Sociedad en
+-- Comandita por Acciones), asi que el dato de la cotizacion esta equivocado.
 --
--- OJO CON ESTO: la cotizacion de GESMOVIL dice "COMPAÑIA METROPOLITANA DE
--- BUSES Y CIA S.C.A.", y el registro dice S.A. Son formas juridicas distintas
--- (Sociedad Anonima vs Sociedad en Comandita por Acciones), y no existe
--- ninguna entidad registrada como "COMBUSES y Cia S.C.A.".
+-- Vale la pena que GESMOVIL lo corrija antes de firmar: el contrato de
+-- designacion como Aliado Tecnologico se firma con la razon social del RUT.
 --
--- Un directorio publico no es fuente valida para un reporte regulatorio: esta
--- razon social viaja en cada mantenimiento que se reporta, y el sujeto
--- obligado que responde por su veracidad es COMBUSES. La fuente es el RUT
--- (casilla 35 razon social, casilla 5 NIT). Confirma ahi antes de ejecutar, y
--- si el RUT dice S.A., conviene que GESMOVIL corrija su propuesta: el contrato
--- de designacion como Aliado Tecnologico se firma con esa razon social.
+-- Esta razon social viaja en cada mantenimiento que se reporta, y el sujeto
+-- obligado que responde por su veracidad es COMBUSES. Por eso la fuente es el
+-- RUT y no un directorio ni la propuesta de un proveedor.
+--
+-- El DV no se incluye porque el campo del manual es 'nit' a secas. Si GESMOVIL
+-- confirma que VIGIA 2 lo espera como 890920397-5, se cambia aqui y basta: la
+-- API lo entrega tal cual esta guardado.
 
 update sicov_config set valor = '890920397', actualizado_en = now()
  where clave = 'nit';
