@@ -36,3 +36,9 @@ desktop.ini
 # (GitHub Pages no sirve desde un repo privado sin plan de pago), y entonces
 # irian con el. El historial de git no se limpia despues sin reescribirlo.
 *.pdf
+
+# El Word de integracion es un archivo generado. La fuente es
+# INTEGRACION-GESMOVIL.md y lo maqueta scripts/generar-word-integracion.py, asi
+# que versionar el .docx duplicaria el contenido y abriria la puerta a que los
+# dos se separen sin que nadie sepa cual vale.
+*.docx
