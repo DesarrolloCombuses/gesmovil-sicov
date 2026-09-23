@@ -387,45 +387,56 @@ async function leerHomologacion(db: ReturnType<typeof createClient>): Promise<Ma
 }
 
 /**
- * Corta la respuesta si el checklist no esta homologado por completo.
+ * Ids de actividad que aparecen en estos registros y no tienen traduccion.
  *
- * Es todo o nada a proposito. Entregar solo las actividades que si tienen
- * traduccion daria un reporte silenciosamente incompleto: diria que se
- * verificaron seis puntos cuando fueron treinta, y nadie lo notaria hasta una
- * auditoria. Un 503 que nombra lo que falta se arregla el mismo dia.
+ * Se comprueba contra LOS REGISTROS CONSULTADOS y no contra el catalogo
+ * completo. Al principio era al contrario, y era peor por dos razones:
+ *
+ *   - Imprecisa. Un hueco en cualquier punto del checklist bloqueaba rangos de
+ *     fechas cuyos registros si eran traducibles por entero.
+ *
+ *   - Y sobre todo, inutil para arrancar. Sin el catalogo oficial completo no
+ *     habia forma de que la API devolviera un 200 ni una vez, asi que GESMOVIL
+ *     no podia probar su cliente contra una respuesta real.
+ *
+ * Lo que no cambia es que sigue siendo todo o nada por registro: si una sola
+ * actividad de un alistamiento no se puede traducir, ese alistamiento no sale.
+ * Entregarlo con las demas diria que se verificaron dos puntos cuando fueron
+ * cuarenta, y eso no se nota hasta una auditoria.
  */
-async function faltaHomologacion(
-  db: ReturnType<typeof createClient>,
-  aplicaA: "aplica_alistamiento" | "aplica_mantenimiento",
-): Promise<Response | null> {
-  const { data, error: errDb } = await db
-    .from("sicov_v_cobertura")
-    .select("id, descripcion, reportable, activa")
-    .eq("activa", true)
-    .eq(aplicaA, true);
-
-  if (errDb) throw new Error(`sicov_v_cobertura: ${errDb.message}`);
-
-  const activas = (data || []) as Fila[];
-
-  if (activas.length === 0) {
-    return error(503, "El checklist de actividades esta vacio. No hay nada que reportar todavia.");
+function actividadesSinMapeo(registros: Fila[], campo: string, homolog: MapaHomolog): number[] {
+  const faltan = new Set<number>();
+  for (const registro of registros) {
+    const crudas = registro[campo];
+    for (const fila of Array.isArray(crudas) ? (crudas as Fila[]) : []) {
+      const id = Number(fila.actividad_id);
+      if (Number.isInteger(id) && !homolog.has(id)) faltan.add(id);
+    }
   }
+  return [...faltan].sort((a, b) => a - b);
+}
 
-  const sinMapeo = activas.filter((f) => f.reportable !== true);
-  if (sinMapeo.length === 0) return null;
+/** 503 nombrando las actividades que faltan, para que se arregle el mismo dia. */
+async function errorSinHomologar(
+  db: ReturnType<typeof createClient>,
+  ids: number[],
+): Promise<Response> {
+  // Se piden las descripciones: un mensaje con "1002, 1003, 1014" obliga a
+  // consultar la base para saber de que actividades habla.
+  const { data } = await db.from("sicov_cat_actividades").select("descripcion").in("id", ids);
+  const nombres = ((data || []) as Fila[]).map((f) => txt(f.descripcion)).filter(Boolean) as string[];
 
-  const ejemplos = sinMapeo.slice(0, 3).map((f) => txt(f.descripcion)).filter(Boolean).join("; ");
-  const resto = sinMapeo.length > 3 ? ` y ${sinMapeo.length - 3} mas` : "";
+  const ejemplos = nombres.slice(0, 3).join("; ");
+  const resto = nombres.length > 3 ? ` y ${nombres.length - 3} mas` : "";
 
   return error(
     503,
     // "los registros" y no "los alistamientos": el mismo mensaje lo usan los
     // dos endpoints, y desde /mantenimientos hablar de alistamientos hace
     // dudar de si se consulto lo que se queria.
-    `Hay ${sinMapeo.length} actividad(es) sin homologar con el catalogo oficial de la Superintendencia ` +
-      `(${ejemplos}${resto}). Los registros se estan capturando, pero no se pueden reportar hasta ` +
-      `completar la homologacion.`,
+    `Los registros de este rango incluyen ${ids.length} actividad(es) sin homologar con el ` +
+      `catalogo oficial de la Superintendencia (${ejemplos}${resto}). Los registros se estan ` +
+      `capturando, pero no se pueden reportar hasta completar la homologacion.`,
   );
 }
 
@@ -475,9 +486,6 @@ async function endpointAlistamientos(
   rango: Rango,
   _cfg: Config,
 ): Promise<RespuestaEndpoint> {
-  const falta = await faltaHomologacion(db, "aplica_alistamiento");
-  if (falta) return { fallo: falta };
-
   const homolog = await leerHomologacion(db);
 
   const { data, error: errDb } = await db
@@ -494,7 +502,12 @@ async function endpointAlistamientos(
 
   if (errDb) throw new Error(`sicov_alistamientos: ${errDb.message}`);
 
-  const salida = ((data || []) as Fila[]).map((f: Fila) => {
+  const registros = (data || []) as Fila[];
+
+  const sinMapeo = actividadesSinMapeo(registros, "sicov_alistamiento_actividades", homolog);
+  if (sinMapeo.length > 0) return { fallo: await errorSinHomologar(db, sinMapeo) };
+
+  const salida = registros.map((f: Fila) => {
     const act = aplanarActividades(f.sicov_alistamiento_actividades, homolog);
     return {
       alistamiento_id: f.id,
@@ -531,13 +544,6 @@ async function endpointMantenimientos(
   const faltaCfg = faltaConfig(cfg, ["nit", "razon_social"]);
   if (faltaCfg) return { fallo: faltaCfg };
 
-  // Los mantenimientos admiten detalle libre, asi que un registro puede no
-  // llevar ninguna actividad del catalogo. Pero si el checklist esta sin
-  // homologar, los que si las llevan saldrian con el detalle vacio -- y eso no
-  // se distingue de un mantenimiento sin describir.
-  const faltaMapeo = await faltaHomologacion(db, "aplica_mantenimiento");
-  if (faltaMapeo) return { fallo: faltaMapeo };
-
   const homolog = await leerHomologacion(db);
 
   const { data, error: errDb } = await db
@@ -553,7 +559,16 @@ async function endpointMantenimientos(
 
   if (errDb) throw new Error(`sicov_mantenimientos: ${errDb.message}`);
 
-  const salida = ((data || []) as Fila[]).map((f: Fila) => {
+  const registros = (data || []) as Fila[];
+
+  // Un mantenimiento puede no llevar ninguna actividad del catalogo, porque
+  // admite detalle libre. Pero si lleva alguna sin homologar, saldria con el
+  // detalle recortado -- y un detalle recortado no se distingue de uno bien
+  // descrito. Se corta.
+  const sinMapeo = actividadesSinMapeo(registros, "sicov_mantenimiento_actividades", homolog);
+  if (sinMapeo.length > 0) return { fallo: await errorSinHomologar(db, sinMapeo) };
+
+  const salida = registros.map((f: Fila) => {
     const act = aplanarActividades(f.sicov_mantenimiento_actividades, homolog);
     return {
       mantenimiento_id: f.id,
