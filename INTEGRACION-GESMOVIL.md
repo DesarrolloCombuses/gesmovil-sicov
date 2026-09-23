@@ -1,26 +1,26 @@
-# Integración SICOV — COMBUSES → GESMOVIL
+# API SICOV de COMBUSES — Guía de consumo
 
 Documento para el equipo técnico de GESMOVIL.
 
-COMBUSES expone por API los alistamientos y mantenimientos registrados en su
-plataforma, para que GESMOVIL los consuma y los transmita al ecosistema de la
-Superintendencia de Transporte (SINST — VIGIA 2).
-
-El contrato sigue el *Manual de apis requeridas para integración
+COMBUSES expone por API los alistamientos y mantenimientos de su flota. El
+contrato sigue el *Manual de apis requeridas para integración
 alistamiento-mantenimientos-despachos*.
+
+> **Nota interna (no va en el documento que se envía):** este archivo es la
+> fuente del Word que se entrega a GESMOVIL, y está escrito para ellos. El
+> razonamiento de diseño de la plataforma —homologación, alcance de la flota,
+> decisiones de captura— vive en `README.md` y en los comentarios de las
+> migraciones. Aquí solo va lo que GESMOVIL necesita para conectarse.
 
 ---
 
-## 1. Qué está disponible
+## 1. Endpoints
 
-| Endpoint | Estado |
-|---|---|
-| `GET /alistamientos` | Disponible |
-| `GET /mantenimientos` | Disponible |
-| Despachos y llegadas | **Fuera de alcance.** Responde `404` con la lista de lo que sí existe. |
-
-Esta plataforma cubre alistamiento y mantenimiento. Despachos y llegadas no
-están implementados y no está previsto que lo estén por esta vía.
+| Método | Ruta | Estado |
+|---|---|---|
+| `GET` | `/alistamientos` | Disponible |
+| `GET` | `/mantenimientos` | Disponible |
+| — | `/despachos`, `/llegadas` | No disponibles. Responden `404`. |
 
 ## 2. URL base
 
@@ -36,42 +36,35 @@ Cabecera `X-API-Key` en cada petición.
 X-API-Key: sicov_xxxxxxxx_<secreto>
 ```
 
-La credencial se entrega **por canal cifrado, aparte de este documento**. No
-viaja aquí a propósito.
+La credencial se entrega por canal cifrado, aparte de este documento.
 
-Detalles que conviene conocer:
-
-- COMBUSES guarda solo el SHA-256 de la clave. **No se puede recuperar.** Si se
-  pierde, se genera otra y la anterior deja de servir.
-- El prefijo (`sicov_xxxxxxxx`) queda visible en los registros de acceso de
-  COMBUSES. Sirve para identificar qué credencial hizo cada consulta.
-- Vigencia de un año, renovable. La fecha exacta va con la credencial.
-- **No hay CORS.** Esto es servidor a servidor. Una llamada desde un navegador
-  será bloqueada, y es intencionado: si la API fuera alcanzable desde una
-  página web, la clave acabaría dentro de un frontend a la vista de cualquiera.
+- Vigencia de un año, renovable.
+- No se puede recuperar si se pierde: se emite una nueva y la anterior deja de
+  servir.
+- **No hay CORS.** La integración es servidor a servidor; una llamada desde un
+  navegador será bloqueada.
 
 ## 4. Parámetros
 
-Los dos endpoints reciben los mismos, y **ambos son obligatorios**:
+Ambos endpoints reciben los mismos, y los dos son obligatorios.
 
-| Parámetro | Formato | Nota |
+| Parámetro | Formato | Regla |
 |---|---|---|
 | `fechaInicio` | `AAAA-MM-DD` | No puede estar en el futuro |
 | `fechaFin` | `AAAA-MM-DD` | No puede ser anterior a `fechaInicio` |
 
-Límites:
+### Límites
 
-- **Rango máximo: 92 días.** El manual no define paginación, así que la
-  alternativa a limitar el rango sería truncar filas en silencio, y entonces
-  GESMOVIL reportaría de menos sin enterarse. Para períodos más largos, dividir
-  la consulta.
-- **Antigüedad máxima: 400 días.** Más atrás que eso no es una consulta
-  operativa.
-- **Límite de peticiones: 120 por hora.** Al pasarse, `429` con `Retry-After`.
+| Límite | Valor | Al excederlo |
+|---|---|---|
+| Rango de la consulta | 92 días | `400` |
+| Antigüedad máxima | 400 días | `400` |
+| Peticiones | 120 por hora | `429` con `Retry-After` |
 
-La fecha es el **día calendario colombiano** al que corresponde el registro, no
-el instante en que se grabó. Se guardan por separado a propósito: un
-alistamiento hecho a las 11 de la noche corresponde a ese día, no al siguiente.
+Para períodos mayores a 92 días, dividir la consulta en tramos.
+
+Las fechas corresponden al **día calendario colombiano** del registro, no al
+instante en que se grabó.
 
 ## 5. `GET /alistamientos`
 
@@ -80,6 +73,8 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
 ?fechaInicio=2026-09-01&fechaFin=2026-09-22" \
      -H "X-API-Key: <credencial>"
 ```
+
+### Respuesta
 
 ```json
 {
@@ -106,20 +101,25 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
 }
 ```
 
-| Campo | Nota |
-|---|---|
-| `alistamiento_id` | Consecutivo de COMBUSES. Único y estable. |
-| `fechaAlistamiento` | Fecha **y hora**, en hora de Colombia (`-05:00`, sin horario de verano). |
-| `responsable` | Responsable del proceso, de la configuración de la empresa. No lo digita el conductor. |
-| `conductor` | Solo conductores activos de la nómina pueden registrar, así que este dato siempre corresponde a uno. |
-| `actividades` | **Ids oficiales de la Superintendencia**, nunca ids internos de COMBUSES. Ver sección 8. |
-| `detalleActividades` | Las descripciones oficiales de esos mismos ids, en el mismo orden. |
+### Campos
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `alistamiento_id` | entero | Consecutivo único y estable |
+| `placa` | texto | Placa del vehículo |
+| `fechaAlistamiento` | texto | Fecha y hora, en hora de Colombia (`-05:00`) |
+| `responsable` | objeto | Responsable del proceso |
+| `conductor` | objeto | Conductor que registró |
+| `actividades` | arreglo | Ids oficiales de la Superintendencia |
+| `detalleActividades` | texto | Descripciones de esos ids, en el mismo orden |
 
 `tipoIdentificacion: 1` es cédula de ciudadanía.
 
-Hay **un alistamiento por placa y por día** como máximo. Si se corrige algo, se
-corrige ese registro; no se crea un segundo. Por eso `alistamiento_id` no se
-duplica para una misma placa y fecha.
+Hay como máximo **un alistamiento por placa y por día**. Una corrección
+modifica ese registro y conserva su `alistamiento_id`.
+
+La flota cubierta es la de la ruta **AEROPUERTO**: 54 vehículos, internos 703 a
+759.
 
 ## 6. `GET /mantenimientos`
 
@@ -144,141 +144,80 @@ duplica para una misma placa y fecha.
 }
 ```
 
-| Campo | Nota |
-|---|---|
-| `tipomantenimiento` | `1` preventivo, `2` correctivo |
-| `detalleActividades` | Descripciones oficiales de las actividades marcadas. Si el registro no marcó ninguna del catálogo, lleva el detalle en texto libre. |
+### Campos
 
-A diferencia de alistamientos, aquí **no viaja un arreglo `actividades`**: el
-manual pide el detalle como texto para este endpoint.
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `mantenimiento_id` | entero | Consecutivo único y estable |
+| `fecha` | texto | `AAAA-MM-DD` |
+| `hora` | texto | `HH:MM` |
+| `nit` | texto | NIT de COMBUSES, sin dígito de verificación |
+| `razonSocial` | texto | Razón social de COMBUSES |
+| `tipomantenimiento` | entero | `1` preventivo, `2` correctivo |
+| `detalleActividades` | texto | Actividades ejecutadas |
+
+Este endpoint **no devuelve un arreglo `actividades`**: el manual pide el
+detalle como texto.
 
 ## 7. Códigos de respuesta
 
-| Código | Cuándo | Qué hacer |
+| Código | Significado | Acción |
 |---|---|---|
 | `200` | Hay registros | Procesar `data` |
-| `400` | Parámetros mal | Corregir la petición. El mensaje dice qué falla. |
-| `401` | Falta la cabecera, o la credencial no vale / expiró | Revisar la credencial |
-| `404` | **No hay registros en el rango** | No es un error. Ver abajo. |
-| `429` | Más de 120 peticiones en una hora | Esperar lo que diga `Retry-After` |
-| `503` | Falta configuración u homologación en COMBUSES | Avisar a COMBUSES. No se resuelve del lado de GESMOVIL. |
-| `500` | Fallo inesperado | Reintentar; si persiste, avisar |
+| `400` | Parámetros inválidos | Corregir la petición; `message` indica qué falla |
+| `401` | Credencial ausente, inválida o vencida | Revisar la credencial |
+| `404` | Sin registros en el rango | Tratar como cero registros, no como error |
+| `429` | Límite de peticiones excedido | Esperar lo indicado en `Retry-After` |
+| `503` | Servicio no disponible temporalmente | Ver abajo |
+| `500` | Fallo inesperado | Reintentar; si persiste, reportar |
 
-**Sobre el `404`:** el manual reserva ese código para «no se encontraron
-registros». No es lo habitual en REST — un rango sin actividad es una respuesta
-válida, no un error — pero es el contrato del manual y manda el contrato.
-Conviene tratarlo como «cero registros», no como fallo de integración.
-
-Todos los errores llegan con la misma envoltura:
+Los errores llegan con la misma envoltura:
 
 ```json
 { "success": false, "message": "texto explicando qué pasó" }
 ```
 
-Cabeceras de respuesta:
+### Sobre el `404`
 
-| Cabecera | Para qué |
+El manual reserva ese código para «no se encontraron registros». Un rango sin
+actividad devuelve `404`, no `200` con lista vacía. Conviene no tratarlo como
+fallo de integración.
+
+### Sobre el `503`
+
+Hoy ambos endpoints responden `503`. El `message` indica la causa: falta cargar
+el catálogo oficial de actividades de la Superintendencia, necesario para que
+el campo `actividades` viaje con ids oficiales.
+
+**Se solicita a GESMOVIL ese catálogo** (id y descripción de cada actividad de
+alistamiento). Una vez cargado, los registros ya capturados quedan disponibles
+de inmediato, incluido el histórico.
+
+## 8. Cabeceras de respuesta
+
+| Cabecera | Contenido |
 |---|---|
-| `X-Api-Version` | Versión del contrato (hoy `v1`) |
-| `X-Total-Registros` | Cuántos elementos trae `data` |
-| `Cache-Control: no-store` | No cachear: son registros, no referencia |
+| `X-Api-Version` | Versión del contrato (`v1`) |
+| `X-Total-Registros` | Número de elementos en `data` |
+| `Cache-Control` | `no-store` |
 
-## 8. Lo que falta para producción
+## 9. Recomendaciones de consumo
 
-**El catálogo oficial de actividades de alistamiento, con sus ids.**
+- **Una consulta diaria** del día anterior cubre la operación normal.
+- **Reprocesar los últimos días** periódicamente: un registro puede corregirse
+  después de haber sido consultado y conserva su id. Conviene usar el id como
+  clave de actualización, no insertar siempre.
+- **No asumir orden** en el arreglo `actividades`.
+- **Conservar el `message`** de los errores: indica la causa concreta.
 
-El campo `actividades` viaja siempre con ids oficiales de la Superintendencia.
-COMBUSES usa internamente su propio checklist de 40 puntos y lo traduce al
-responder, siguiendo lo que indica el manual:
+## 10. Soporte
 
-> «Procedimiento es consultar las actividades de alistamiento en el link
-> anterior y homologar con las actividades de alistamiento que tiene la empresa
-> de transporte.»
+Dudas del contrato, credenciales o incidencias: área de desarrollo de COMBUSES.
 
-Para cargar esa homologación hace falta el catálogo oficial. Hoy COMBUSES solo
-conoce dos pares id–descripción (los del ejemplo del manual), así que mientras
-tanto:
+Para cerrar la integración se requiere de GESMOVIL:
 
-```
-GET /alistamientos  →  503
-
-{
-  "success": false,
-  "message": "Hay 38 actividad(es) sin homologar con el catalogo oficial de la
-              Superintendencia (...). Los registros se estan capturando, pero
-              no se pueden reportar hasta completar la homologacion."
-}
-```
-
-Es deliberado, y es todo o nada. Entregar solo las actividades que sí tienen
-traducción produciría un reporte silenciosamente incompleto: diría que se
-verificaron 2 puntos cuando fueron 40, y nadie lo notaría hasta una auditoría.
-Y entregar ids internos sería peor: para la Superintendencia, el id `1011` no
-significa «una actividad de COMBUSES», significa **otra actividad distinta**.
-
-**Lo que se pide a GESMOVIL:** el archivo del catálogo oficial de actividades
-de alistamiento, con id y descripción de cada una. GESMOVIL ya integra con
-VIGIA 2, así que debería tenerlo.
-
-Sobre el endpoint `GET /api/v2/mantenimiento/listar-actividades` de la
-Superintendencia: se verificó contra el servicio real y la cabecera correcta es
-`Authorization: Bearer`. Con el token del manual responde «Error en el token»
-(ese token sí sirve para `nivelservicio` y `listar-clase-vehiculo`). Ninguna
-variante del endpoint es pública.
-
-**Importante:** la traducción se aplica **al leer**, no al guardar. El día que
-se cargue la homologación, **todo el histórico ya capturado queda reportable de
-inmediato**, sin tocar un solo registro. No se pierde nada de lo que se registre
-mientras tanto.
-
-## 9. Alcance de la flota
-
-Solo entran los vehículos de la ruta **AEROPUERTO** (54 unidades, internos 703
-a 759): el servicio al aeropuerto José María Córdova.
-
-COMBUSES opera también rutas urbanas en Medellín con la misma empresa, pero el
-SICOV-OTPC cubre el transporte intermunicipal por carretera. Los vehículos
-urbanos no se alistan por esta vía y no aparecerán en las respuestas.
-
-## 10. Recomendaciones de consumo
-
-- **Una consulta diaria** del día anterior cubre la operación normal. Los
-  alistamientos se registran antes de salir a ruta.
-- **Reprocesar los últimos días** de vez en cuando: un registro puede
-  corregirse después de haberse consultado, y en ese caso el
-  `alistamiento_id` es el mismo. Conviene tratar el id como clave de
-  actualización, no insertar siempre.
-- **No asumir orden en `actividades`.** El arreglo no viene ordenado; si
-  importa, ordenar del lado de GESMOVIL.
-- **Guardar el `message` de los errores.** Están redactados para decir qué
-  falta, y ahorran una ida y vuelta al diagnosticar.
-
-## 11. Contacto
-
-Dudas técnicas del contrato, credenciales o incidencias: el área de desarrollo
-de COMBUSES.
-
-Lo que COMBUSES necesita de GESMOVIL para cerrar la integración:
-
-1. El catálogo oficial de actividades de alistamiento con sus ids (sección 8).
+1. El catálogo oficial de actividades de alistamiento con sus ids (sección 7).
 2. Confirmación de que el consumo funciona con la credencial entregada.
-3. La IP o el rango de IP desde donde consumirán, si conviene restringirlo.
-4. **Si VIGIA 2 espera el NIT con dígito de verificación.** Hoy el campo `nit`
-   viaja como `890920397` (sin DV), porque el campo del manual es `nit` a
-   secas. El DV es `5`. Si hace falta enviarlo como `890920397-5`, se cambia en
-   la configuración de COMBUSES y basta.
-
-### Nota sobre la razón social
-
-La razón social correcta es **COMPAÑIA METROPOLITANA DE BUSES S.A.**, según la
-casilla 35 del RUT (formulario DIAN 141264854098, actualizado el 31 de julio de
-2026), coincidente con el RUES. La sigla registrada es **COMBUSES S.A.**
-
-La cotización de GESMOVIL identifica a la empresa como «COMPAÑIA METROPOLITANA
-DE BUSES Y CIA S.C.A.». Son formas jurídicas distintas —Sociedad Anónima frente
-a Sociedad en Comandita por Acciones— y conviene corregirlo antes de firmar el
-contrato de designación como Aliado Tecnológico, que debe llevar la razón
-social del RUT.
-
-Este dato viaja en cada mantenimiento reportado y el sujeto obligado que
-responde por su veracidad es COMBUSES.
+3. La IP o rango de IP desde donde consumirán, si se desea restringir el acceso.
+4. Confirmación de si VIGIA 2 espera el NIT con dígito de verificación. Hoy
+   viaja como `890920397`; el DV es `5`.
