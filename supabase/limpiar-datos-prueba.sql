@@ -18,6 +18,14 @@
 --
 -- Las actividades de cada registro se van solas: la clave ajena es
 -- 'on delete cascade'.
+--
+-- ESTO NO BORRA LA EVIDENCIA DE QUE GESMOVIL CONSUMIO
+--
+-- Un alistamiento no guarda ninguna marca de haber sido leido, asi que
+-- conservarlos no demuestra nada. Lo que prueba el consumo es la peticion, y
+-- esa vive en api_accesos: fecha, endpoint, rango pedido, status, filas
+-- entregadas, IP y user-agent. Esta limpieza no toca esa tabla.
+--   Para consultarla:  supabase/auditar-consumo-gesmovil.sql
 -- ===========================================================================
 
 begin;
