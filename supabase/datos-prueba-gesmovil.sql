@@ -82,7 +82,12 @@ plan as (
   select
     p.placa,
     ('2026-09-0' || d.n)::date as fecha,
-    (('2026-09-0' || d.n) || ' ' || d.hora)::timestamptz as registrado_en,
+    -- El '-05' no sobra. Un literal sin zona lo interpreta Postgres en la
+    -- timezone de la sesion, y la del editor de Supabase es UTC: '05:12' se
+    -- guardaria como 05:12 UTC, que en Colombia son las 00:12 del mismo dia.
+    -- La API devuelve la columna 'fecha' junto a la hora colombiana de
+    -- 'registrado_en', asi que ese desfase sale a la vista en la respuesta.
+    ((('2026-09-0' || d.n) || ' ' || d.hora) || '-05')::timestamptz as registrado_en,
     c.cedula,
     c.nombre as conductor,
     d.km

@@ -131,7 +131,7 @@ La flota cubierta es la de la ruta **AEROPUERTO**: 54 vehículos, internos 703 a
       "mantenimiento_id": 1,
       "fecha": "2026-09-20",
       "placa": "EQR790",
-      "hora": "14:30",
+      "hora": "14:30:00",
       "nit": "890920397",
       "razonSocial": "COMPAÑIA METROPOLITANA DE BUSES S.A.",
       "tipoIdentificacion": 1,
@@ -150,7 +150,7 @@ La flota cubierta es la de la ruta **AEROPUERTO**: 54 vehículos, internos 703 a
 |---|---|---|
 | `mantenimiento_id` | entero | Consecutivo único y estable |
 | `fecha` | texto | `AAAA-MM-DD` |
-| `hora` | texto | `HH:MM` |
+| `hora` | texto | `HH:MM:SS` |
 | `nit` | texto | NIT de COMBUSES, sin dígito de verificación |
 | `razonSocial` | texto | Razón social de COMBUSES |
 | `tipomantenimiento` | entero | `1` preventivo, `2` correctivo |
@@ -185,13 +185,34 @@ fallo de integración.
 
 ### Sobre el `503`
 
-Hoy ambos endpoints responden `503`. El `message` indica la causa: falta cargar
-el catálogo oficial de actividades de la Superintendencia, necesario para que
-el campo `actividades` viaje con ids oficiales.
+Aparece cuando algún registro del rango consultado incluye una actividad que
+todavía no tiene asignado su id oficial de la Superintendencia. El `message`
+indica cuántas son y nombra las primeras.
 
-**Se solicita a GESMOVIL ese catálogo** (id y descripción de cada actividad de
-alistamiento). Una vez cargado, los registros ya capturados quedan disponibles
-de inmediato, incluido el histórico.
+La comprobación es **por registro, no sobre el catálogo completo**: un rango
+puede responder `200` mientras otro responde `503`.
+
+**Se solicita a GESMOVIL el catálogo oficial de actividades de alistamiento**
+(id y descripción de cada una). Una vez cargado, los registros ya capturados
+quedan disponibles de inmediato, incluido el histórico.
+
+### Rango de prueba
+
+Para poder programar y validar el consumo antes de que ese catálogo esté
+cargado, hay registros de prueba disponibles:
+
+| Rango | Contenido |
+|---|---|
+| `2026-09-01` a `2026-09-04` | 4 alistamientos y 2 mantenimientos. Responde `200`. |
+
+Uno de los alistamientos tiene una actividad no conforme, y los mantenimientos
+cubren los dos valores de `tipomantenimiento`. Cada alistamiento de prueba
+lleva 2 actividades; uno real lleva 40. El campo `actividades` es un arreglo en
+ambos casos.
+
+Estos registros **se retirarán antes de la puesta en producción** y no deben
+transmitirse a la Superintendencia. Las consultas fuera de ese rango responden
+hoy `503` o `404`.
 
 ## 8. Cabeceras de respuesta
 
@@ -221,3 +242,6 @@ Para cerrar la integración se requiere de GESMOVIL:
 3. La IP o rango de IP desde donde consumirán, si se desea restringir el acceso.
 4. Confirmación de si VIGIA 2 espera el NIT con dígito de verificación. Hoy
    viaja como `890920397`; el DV es `5`.
+5. Confirmación del formato esperado en `hora` de `/mantenimientos`. Hoy viaja
+   como `HH:MM:SS`; los segundos son siempre `00`, porque la captura es a
+   minuto. Se ajusta a `HH:MM` si VIGIA 2 lo requiere así.

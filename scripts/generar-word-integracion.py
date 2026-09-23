@@ -468,7 +468,7 @@ codigo(
         '      "mantenimiento_id": 1,',
         '      "fecha": "2026-09-20",',
         '      "placa": "EQR790",',
-        '      "hora": "14:30",',
+        '      "hora": "14:30:00",',
         '      "nit": "890920397",',
         '      "razonSocial": "COMPAÑIA METROPOLITANA DE BUSES S.A.",',
         '      "tipoIdentificacion": 1,',
@@ -489,7 +489,7 @@ tabla(
     [
         ["|mantenimiento_id", "entero", "Consecutivo único y estable"],
         ["|fecha", "texto", "AAAA-MM-DD"],
-        ["|hora", "texto", "HH:MM"],
+        ["|hora", "texto", "HH:MM:SS"],
         ["|nit", "texto", "NIT de COMBUSES, sin dígito de verificación"],
         ["|razonSocial", "texto", "Razón social de COMBUSES"],
         ["|tipomantenimiento", "entero", "1 preventivo, 2 correctivo"],
@@ -537,13 +537,44 @@ aviso(
 )
 
 aviso(
-    "Sobre el 503 — estado actual",
-    "Hoy ambos endpoints responden 503. El message indica la causa: falta cargar "
-    "el catálogo oficial de actividades de la Superintendencia, necesario para "
-    "que el campo actividades viaje con ids oficiales. Se solicita a GESMOVIL "
-    "ese catálogo (id y descripción de cada actividad de alistamiento). Una vez "
-    "cargado, los registros ya capturados quedan disponibles de inmediato, "
-    "incluido el histórico.",
+    "Sobre el 503",
+    "Aparece cuando algún registro del rango consultado incluye una actividad que "
+    "todavía no tiene asignado su id oficial de la Superintendencia. El message "
+    "indica cuántas son y nombra las primeras. La comprobación es por registro, no "
+    "sobre el catálogo completo: un rango puede responder 200 mientras otro "
+    "responde 503. Se solicita a GESMOVIL el catálogo oficial de actividades de "
+    "alistamiento (id y descripción de cada una). Una vez cargado, los registros "
+    "ya capturados quedan disponibles de inmediato, incluido el histórico.",
+)
+
+h2("Rango de prueba")
+
+par(
+    "Para poder programar y validar el consumo antes de que ese catálogo esté "
+    "cargado, hay registros de prueba disponibles:"
+)
+
+tabla(
+    ["Rango", "Contenido"],
+    [
+        ["|2026-09-01  a  2026-09-04",
+         "4 alistamientos y 2 mantenimientos. Responde 200."],
+    ],
+    [2.4, 4.1],
+)
+
+par(
+    "Uno de los alistamientos tiene una actividad no conforme, y los "
+    "mantenimientos cubren los dos valores de tipomantenimiento. Cada "
+    "alistamiento de prueba lleva 2 actividades; uno real lleva 40. El campo "
+    "actividades es un arreglo en ambos casos."
+)
+
+aviso(
+    "Estos registros se retiran antes de la puesta en producción",
+    "No deben transmitirse a la Superintendencia: corresponden a alistamientos "
+    "que no ocurrieron. Las consultas fuera de ese rango responden hoy 503 o 404.",
+    color="FDF0E6",
 )
 
 # ===========================================================================
@@ -600,6 +631,16 @@ numerada(
     [
         ("Confirmación de si VIGIA 2 espera el NIT con dígito de verificación. ", ""),
         ("El DV es 5, y hoy el campo viaja como 890920397, sin él.", ""),
+    ],
+    con_siguiente=True,
+)
+numerada(
+    [
+        ("Confirmación del formato esperado en el campo ", ""),
+        ("hora", "c"),
+        (" de mantenimientos. Hoy viaja como HH:MM:SS; los segundos son siempre "
+         "00, porque la captura es a minuto. Se ajusta a HH:MM si VIGIA 2 lo "
+         "requiere así.", ""),
     ]
 )
 
