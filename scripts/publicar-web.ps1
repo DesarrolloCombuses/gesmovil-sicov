@@ -41,6 +41,37 @@ $swRuta = Join-Path $web 'sw.js'
 $version = (Select-String -Path $swRuta -Pattern 'const VERSION = "([^"]+)"').Matches[0].Groups[1].Value
 if (-not $version) { throw 'No se pudo leer VERSION de sw.js' }
 
+# Si la version ya esta publicada, los telefonos instalados NO se enteraran del
+# cambio: el navegador detecta version nueva comparando sw.js, y si VERSION no
+# cambio no hay nada que detectar. El despliegue saldria bien y el error solo se
+# veria dias despues, cuando alguien reporte que sigue con la pantalla vieja.
+# La URL del proyecto se lee de comun.js, que ya la tiene: una segunda copia
+# aqui acabaria apuntando a otro sitio el dia que el proyecto cambie.
+$comun = Join-Path $web 'assets\comun.js'
+$urlProyecto = (Select-String -Path $comun -Pattern 'SUPABASE_URL: "([^"]+)"').Matches[0].Groups[1].Value
+$urlRemota = "$urlProyecto/storage/v1/object/public/$Bucket/sw.js"
+try {
+    $remoto = (Invoke-WebRequest -Uri $urlRemota -UseBasicParsing -TimeoutSec 8).Content
+    if ($remoto -match 'const VERSION = "([^"]+)"') {
+        $versionArriba = $Matches[1]
+        if ($versionArriba -eq $version) {
+            Write-Host ""
+            Write-Host "  La version $version YA esta publicada." -ForegroundColor Yellow
+            Write-Host "  Los telefonos ya instalados no veran este cambio." -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "  Sube la version primero:" -ForegroundColor DarkGray
+            Write-Host "    powershell -File scripts/subir-version.ps1 -Nota 'que cambio'" -ForegroundColor DarkGray
+            Write-Host ""
+            $seguir = Read-Host "  Publicar igual? (s/N)"
+            if ($seguir -ne 's') { throw 'Publicacion cancelada.' }
+        }
+    }
+} catch {
+    # Primera publicacion, bucket sin crear, o sin red: ninguno impide intentar
+    # publicar, solo deja la comprobacion sin hacer.
+    Write-Host "  (no se pudo comprobar la version publicada)" -ForegroundColor DarkGray
+}
+
 Write-Host ""
 Write-Host "  Publicando version $version en el bucket '$Bucket'" -ForegroundColor Cyan
 Write-Host ""
