@@ -1,0 +1,23 @@
+AZUL = RGBColor(0x1A, 0x4F, 0xA0)
+GRIS = RGBColor(0x5B, 0x6B, 0x7D)
+TINTA = RGBColor(0x16, 0x20, 0x2C)
+FONDO_CODIGO = "F4F6F9"
+FONDO_CABECERA = "1A4FA0"
+FONDO_FILA = "F7F9FC"
+FECHA = "23 de septiembre de 2026"
+BASE_URL = "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil"
+doc = Document()
+for s in doc.sections:
+s.page_width = Inches(8.5)
+s.page_height = Inches(11)
+s.left_margin = Inches(1)
+s.right_margin = Inches(1)
+s.top_margin = Inches(0.9)
+s.bottom_margin = Inches(0.9)
+base = doc.styles["Normal"]
+base.font.name = "Calibri"
+base.font.size = Pt(10.5)
+base.font.color.rgb = TINTA
+base.paragraph_format.space_after = Pt(7)
+base.paragraph_format.line_spacing = 1.08
+base.element.rPr.rFonts.set(qn("w:eastAsia"), "Calibri")

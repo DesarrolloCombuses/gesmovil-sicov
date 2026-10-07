@@ -1,0 +1,207 @@
+    def self.sombrear(self, elemento, color):
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:val"), "clear")
+        shd.set(qn("w:color"), "auto")
+        shd.set(qn("w:fill"), color)
+        elemento.append(shd)
+
+
+    def self.borde_inferior(self, p, color="D8E0EA", grosor=6):
+        pPr = p._p.get_or_add_pPr()
+        bdr = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), str(grosor))
+        bottom.set(qn("w:space"), "4")
+        bottom.set(qn("w:color"), color)
+        bdr.append(bottom)
+        pPr.append(bdr)
+
+
+    def self.h1(self, texto):
+        p = self.doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(12)
+        p.paragraph_format.space_after = Pt(7)
+        p.paragraph_format.keep_with_next = True
+        r = p.add_run(texto)
+        r.font.size = Pt(15)
+        r.font.bold = True
+        r.font.color.rgb = AZUL
+        self.borde_inferior(p)
+        return p
+
+
+    def self.h2(self, texto):
+        p = self.doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(10)
+        p.paragraph_format.space_after = Pt(4)
+        p.paragraph_format.keep_with_next = True
+        r = p.add_run(texto)
+        r.font.size = Pt(11.5)
+        r.font.bold = True
+        r.font.color.rgb = TINTA
+        return p
+
+
+    def self.par(self, texto=None, negrita=False, gris=False, tam=10.5, antes=0, despues=7):
+        p = self.doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(antes)
+        p.paragraph_format.space_after = Pt(despues)
+        if texto:
+            r = p.add_run(texto)
+            r.font.bold = negrita
+            r.font.size = Pt(tam)
+            if gris:
+                r.font.color.rgb = GRIS
+        return p
+
+
+    def self.rico(self, trozos, antes=0, despues=7):
+        """Parrafo mezclando estilos: [(texto, "b"|"c"|"bc"|""), ...]"""
+        p = self.doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(antes)
+        p.paragraph_format.space_after = Pt(despues)
+        for texto, estilo in trozos:
+            r = p.add_run(texto)
+            if "b" in estilo:
+                r.font.bold = True
+            if "c" in estilo:
+                r.font.name = "Consolas"
+                r.font.size = Pt(9.5)
+            if "g" in estilo:
+                r.font.color.rgb = GRIS
+        return p
+
+
+    def vineta_rica(self, trozos):
+        p = self.doc.add_paragraph(style="List Bullet")
+        p.paragraph_format.left_indent = Inches(0.28)
+        p.paragraph_format.space_after = Pt(4)
+        for texto, estilo in trozos:
+            r = p.add_run(texto)
+            if "b" in estilo:
+                r.font.bold = True
+            if "c" in estilo:
+                r.font.name = "Consolas"
+                r.font.size = Pt(9.5)
+        return p
+
+
+    def numerada(self, trozos, con_siguiente=False):
+        p = self.doc.add_paragraph(style="List Number")
+        p.paragraph_format.left_indent = Inches(0.28)
+        p.paragraph_format.space_after = Pt(4)
+        # Una lista numerada partida entre dos paginas se lee mal, y peor si el
+        # titulo queda en la anterior.
+        p.paragraph_format.keep_together = True
+        p.paragraph_format.keep_with_next = con_siguiente
+        for texto, estilo in trozos:
+            r = p.add_run(texto)
+            if "b" in estilo:
+                r.font.bold = True
+            if "c" in estilo:
+                r.font.name = "Consolas"
+                r.font.size = Pt(9.5)
+        return p
+
+
+    def self.codigo(self, lineas, tam=8.0):
+        """Bloque monoespaciado sombreado. Es una tabla de una celda para que el
+        sombreado cubra el ancho entero y no solo el texto."""
+        t = self.doc.add_table(rows=1, cols=1)
+        t.alignment = WD_TABLE_ALIGNMENT.LEFT
+        ancho = Inches(6.5)
+        t.columns[0].width = ancho
+        celda = t.cell(0, 0)
+        celda.width = ancho
+        self.sombrear(celda._tc.get_or_add_tcPr(), FONDO_CODIGO)
+
+        celda.text = ""
+        for i, linea in enumerate(lineas):
+            p = celda.paragraphs[0] if i == 0 else celda.add_paragraph()
+            p.paragraph_format.space_after = Pt(0)
+            p.paragraph_format.space_before = Pt(0)
+            p.paragraph_format.line_spacing = 1.05
+            r = p.add_run(linea)
+            r.font.name = "Consolas"
+            r.font.size = Pt(tam)
+        self.par(despues=2)
+        return t
+
+
+    def self.tabla(self, cabeceras, filas, anchos):
+        """Prefijos en cada celda: | monoespaciado, * negrita.
+
+        cabeceras=None para una tabla sin fila de titulos: la de la portada son
+        pares dato/valor, y una barra azul vacia encima se ve como un error."""
+        columnas = len(anchos)
+        t = self.doc.add_table(rows=1 if cabeceras else 0, cols=columnas)
+        t.style = "Table Grid"
+        t.alignment = WD_TABLE_ALIGNMENT.LEFT
+        anchos_in = [Inches(a) for a in anchos]
+
+        if cabeceras:
+            # Si la tabla se parte entre paginas, que la cabecera se repita arriba.
+            # Sin esto, una tabla partida deja la fila azul sola al pie de una
+            # pagina y las filas de datos sin titulo en la siguiente.
+            trPr = t.rows[0]._tr.get_or_add_trPr()
+            th = OxmlElement("w:tblHeader")
+            th.set(qn("w:val"), "true")
+            trPr.append(th)
+
+        for j, texto in enumerate(cabeceras or []):
+            c = t.cell(0, j)
+            self.sombrear(c._tc.get_or_add_tcPr(), FONDO_CABECERA)
+            p = c.paragraphs[0]
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.space_before = Pt(2)
+            r = p.add_run(texto)
+            r.font.bold = True
+            r.font.size = Pt(9.5)
+            r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+
+        for i, fila in enumerate(filas):
+            celdas = t.add_row().cells
+            for j, valor in enumerate(fila):
+                c = celdas[j]
+                if i % 2 == 1:
+                    self.sombrear(c._tc.get_or_add_tcPr(), FONDO_FILA)
+                p = c.paragraphs[0]
+                p.paragraph_format.space_after = Pt(2)
+                p.paragraph_format.space_before = Pt(2)
+                mono = valor.startswith("|")
+                fuerte = valor.startswith("*")
+                r = p.add_run(valor[1:] if (mono or fuerte) else valor)
+                r.font.size = Pt(9.5)
+                if mono:
+                    r.font.name = "Consolas"
+                    r.font.size = Pt(9)
+                if fuerte:
+                    r.font.bold = True
+
+        # Word ignora el ancho de columna si las celdas no lo llevan.
+        for fila in t.rows:
+            for j, c in enumerate(fila.cells):
+                c.width = anchos_in[j]
+        self.par(despues=4)
+        return t
+
+
+    def self.aviso(self, titulo, cuerpo, color="FFF4E0"):
+        t = self.doc.add_table(rows=1, cols=1)
+        ancho = Inches(6.5)
+        t.columns[0].width = ancho
+        c = t.cell(0, 0)
+        c.width = ancho
+        self.sombrear(c._tc.get_or_add_tcPr(), color)
+        p = c.paragraphs[0]
+        p.paragraph_format.space_after = Pt(3)
+        r = p.add_run(titulo)
+        r.font.bold = True
+        r.font.size = Pt(10.5)
+        p2 = c.add_paragraph()
+        p2.paragraph_format.space_after = Pt(1)
+        r2 = p2.add_run(cuerpo)
+        r2.font.size = Pt(10)
+        self.par(despues=4)
+        return t
