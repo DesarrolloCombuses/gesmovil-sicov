@@ -488,6 +488,12 @@ async function endpointAlistamientos(
 ): Promise<RespuestaEndpoint> {
   const homolog = await leerHomologacion(db);
 
+  // Columna por columna, NUNCA '*'. La tabla tiene campos que no pueden salir
+  // de aqui: apto_descanso, apto_sustancias y apto_observacion son el
+  // autorreporte del conductor sobre su propio estado -- dato de salud de una
+  // persona identificada, categoria especial bajo la Ley 1581 -- y el contrato
+  // del manual no los pide. Un '*' los mandaria a GESMOVIL y de ahi al
+  // regulador sin que nadie lo hubiera decidido.
   const { data, error: errDb } = await db
     .from("sicov_alistamientos")
     .select(`

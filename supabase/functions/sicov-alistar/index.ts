@@ -483,6 +483,21 @@ async function registrar(req: Request): Promise<Response> {
     return malo(`Estas actividades no existen en el catalogo oficial: ${sobran.join(", ")}.`);
   }
 
+  // --- Autorreporte de condiciones del conductor ---
+  // Descanso/fatiga y alcohol/sustancias. Obligatorias las dos: el valor de
+  // una declaracion esta en que se haya hecho, y un campo que se puede dejar
+  // vacio no es una declaracion.
+  //
+  // Se exige booleano estricto. Un `!== false` habria tratado undefined, "" y
+  // "no" como un "si declara estar apto", que es exactamente la respuesta que
+  // no se puede inventar: acabaria en un expediente afirmando algo que el
+  // conductor nunca dijo.
+  const aptoDescanso = payload.aptoDescanso;
+  const aptoSustancias = payload.aptoSustancias;
+  if (typeof aptoDescanso !== "boolean" || typeof aptoSustancias !== "boolean") {
+    return malo("Falta responder las preguntas de condiciones para operar.");
+  }
+
   // --- Kilometraje (opcional, pero si viene tiene que ser un numero) ---
   let kilometraje: number | null = null;
   if (payload.kilometraje !== undefined && payload.kilometraje !== null && payload.kilometraje !== "") {
@@ -506,8 +521,14 @@ async function registrar(req: Request): Promise<Response> {
       conductor_nombre: nombreConductor,
       kilometraje,
       observaciones: txt(payload.observaciones),
+      // No viajan a GESMOVIL: la API selecciona columna por columna y estas no
+      // estan en su lista. Es dato de salud de una persona identificada, y el
+      // contrato del manual no lo pide.
+      apto_descanso: aptoDescanso,
+      apto_sustancias: aptoSustancias,
+      apto_observacion: txt(payload.aptoObservacion),
     })
-    .select("id")
+    .select("id, estado")
     .single();
 
   if (errIns) {
