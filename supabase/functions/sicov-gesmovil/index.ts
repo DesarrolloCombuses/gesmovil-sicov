@@ -348,6 +348,38 @@ function faltaConfig(cfg: Config, claves: string[]): Response | null {
 }
 
 // ---------------------------------------------------------------------------
+// Lectura paginada
+// ---------------------------------------------------------------------------
+// PostgREST corta cada respuesta en 1000 filas (db-max-rows del proyecto), y lo
+// hace en silencio: no hay error ni cabecera que avise. Con unos 51
+// alistamientos diarios, un mes pasa de 1000, y GESMOVIL habria recibido hasta
+// el dia 20 y algo creyendo que era todo. Verificado el 4-nov-2026: pedir del
+// 1-oct al 4-nov devolvia 1000 filas que terminaban el 27-oct.
+//
+// Se pide pagina tras pagina hasta que una llegue vacia. Se avanza por lo que
+// llego y no por lo que se pidio, para que siga funcionando si alguien cambia
+// el tope del proyecto a un valor menor.
+const PAGINA = 1000;
+
+// 92 dias de la flota completa no llegan a 6 paginas. Pasar de esto indica que
+// la consulta no esta avanzando, y es mejor un 500 que un bucle sin fin.
+const PAGINAS_MAX = 50;
+
+type Pagina = PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
+
+async function leerTodo(tabla: string, pedir: (desde: number, hasta: number) => Pagina): Promise<Fila[]> {
+  const filas: Fila[] = [];
+  for (let n = 0; n < PAGINAS_MAX; n++) {
+    const { data, error: errDb } = await pedir(filas.length, filas.length + PAGINA - 1);
+    if (errDb) throw new Error(`${tabla}: ${errDb.message}`);
+    const lote = (data || []) as Fila[];
+    if (lote.length === 0) return filas;
+    filas.push(...lote);
+  }
+  throw new Error(`${tabla}: mas de ${PAGINAS_MAX} paginas en una sola consulta`);
+}
+
+// ---------------------------------------------------------------------------
 // Actividades: el catalogo de COMBUSES
 // ---------------------------------------------------------------------------
 // Se lee completo, inactivas incluidas: un alistamiento de hace tres meses
@@ -436,21 +468,25 @@ async function endpointAlistamientos(
   // persona identificada, categoria especial bajo la Ley 1581 -- y el contrato
   // del manual no los pide. Un '*' los mandaria a GESMOVIL y de ahi al
   // regulador sin que nadie lo hubiera decidido.
-  const { data, error: errDb } = await db
-    .from("sicov_alistamientos")
-    .select(`
-      id, placa, fecha, registrado_en,
-      responsable_tipo_id, responsable_num_id, responsable_nombre,
-      conductor_tipo_id, conductor_num_id, conductor_nombre,
-      sicov_alistamiento_actividades ( actividad_id )
-    `)
-    .gte("fecha", rango.inicio)
-    .lte("fecha", rango.fin)
-    .order("fecha", { ascending: true });
+  const registros = await leerTodo("sicov_alistamientos", (desde, hasta) =>
+    db
+      .from("sicov_alistamientos")
+      .select(`
+        id, placa, fecha, registrado_en,
+        responsable_tipo_id, responsable_num_id, responsable_nombre,
+        conductor_tipo_id, conductor_num_id, conductor_nombre,
+        sicov_alistamiento_actividades ( actividad_id )
+      `)
+      .gte("fecha", rango.inicio)
+      .lte("fecha", rango.fin)
+      // El id desempata dentro del dia. Sin un orden total, dos paginas
+      // seguidas pueden repetir o saltarse alistamientos de la misma fecha.
+      .order("fecha", { ascending: true })
+      .order("id", { ascending: true })
+      .range(desde, hasta)
+  );
 
-  if (errDb) throw new Error(`sicov_alistamientos: ${errDb.message}`);
-
-  const salida = ((data || []) as Fila[]).map((f: Fila) => {
+  const salida = registros.map((f: Fila) => {
     const act = aplanarActividades(f.sicov_alistamiento_actividades, catalogo);
     return {
       alistamiento_id: f.id,
@@ -489,20 +525,22 @@ async function endpointMantenimientos(
 
   const catalogo = await leerCatalogo(db);
 
-  const { data, error: errDb } = await db
-    .from("sicov_mantenimientos")
-    .select(`
-      id, placa, fecha, hora, tipo, detalle_libre,
-      responsable_tipo_id, responsable_num_id, responsable_nombre,
-      sicov_mantenimiento_actividades ( actividad_id )
-    `)
-    .gte("fecha", rango.inicio)
-    .lte("fecha", rango.fin)
-    .order("fecha", { ascending: true });
+  const registros = await leerTodo("sicov_mantenimientos", (desde, hasta) =>
+    db
+      .from("sicov_mantenimientos")
+      .select(`
+        id, placa, fecha, hora, tipo, detalle_libre,
+        responsable_tipo_id, responsable_num_id, responsable_nombre,
+        sicov_mantenimiento_actividades ( actividad_id )
+      `)
+      .gte("fecha", rango.inicio)
+      .lte("fecha", rango.fin)
+      .order("fecha", { ascending: true })
+      .order("id", { ascending: true })
+      .range(desde, hasta)
+  );
 
-  if (errDb) throw new Error(`sicov_mantenimientos: ${errDb.message}`);
-
-  const salida = ((data || []) as Fila[]).map((f: Fila) => {
+  const salida = registros.map((f: Fila) => {
     const act = aplanarActividades(f.sicov_mantenimiento_actividades, catalogo);
     return {
       mantenimiento_id: f.id,

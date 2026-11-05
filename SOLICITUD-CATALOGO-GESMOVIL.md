@@ -38,8 +38,8 @@ con la v1 y lo que dice el mensaje no sería cierto. Se comprueba en la cabecera
 >   1000 en adelante) y `detalleActividades` sus descripciones, en el mismo
 >   orden.
 > - Ya no hay respuestas `503` por actividades sin homologar: cualquier rango
->   con registros responde `200`. Los registros reales empiezan el 22 de
->   septiembre de 2026.
+>   con registros responde `200`. La operación diaria se registra desde el 7
+>   de octubre de 2026.
 > - Nuevo endpoint `GET /actividades`, sin parámetros y con la misma
 >   credencial. Devuelve el catálogo completo: id, descripción, grupo y si está
 >   activa. Si COMBUSES agrega una actividad, aparece ahí con un id nuevo; los
@@ -62,6 +62,14 @@ con la v1 y lo que dice el mensaje no sería cierto. Se comprueba en la cabecera
 ---
 
 ## Notas internas (no van en el mensaje)
+
+### El alistamiento suelto del 22 de septiembre
+
+Antes del 7 de octubre solo hay uno real fuera del rango de prueba: el id 3,
+placa EQR790, del 22-sep a las 17:37. Es el que aparece de ejemplo en la guía.
+Si fue una prueba de integración, hay que borrarlo junto con los de prueba
+antes de que GESMOVIL transmita; si no, GESMOVIL lo reportará a la
+Supertransporte como un alistamiento real.
 
 ### Por qué pedimos la tabla de vuelta
 

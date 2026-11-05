@@ -244,8 +244,8 @@ depende de la consulta: se resuelve del lado de COMBUSES.
 
 ### Rango de prueba
 
-Los registros reales empiezan el 22 de septiembre de 2026. Antes de esa fecha
-hay registros de prueba:
+La operación diaria se registra desde el 7 de octubre de 2026. Para probar el
+consumo hay además registros de prueba:
 
 | Rango | Contenido |
 |---|---|
