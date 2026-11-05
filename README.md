@@ -283,11 +283,20 @@ Verificado el 21-sep-2026 contra los servicios reales:
 | `nivelservicio` | ✅ responde (no lo necesitamos) |
 | `listar-clase-vehiculo` | ✅ responde (no lo necesitamos) |
 
+Verificado el 4-nov-2026: **el token de proveedor tecnológico tampoco abre
+`listar-actividades`**. Es el que la Supertransporte emitió el 23-oct a nombre
+de GESMOVIL SAS (NIT 900853057) y llegó en un `.rar` con contraseña; responde el
+mismo «Error en el token». El middleware que lo rechaza se llama
+`AutenticacionVigia`, así que la maestra parece esperar la sesión del portal
+VIGIA y no un token de proveedor. El token no está en este repositorio ni debe
+estarlo.
+
 La cabecera correcta es `Authorization: Bearer` — con `token:` o `x-token:` el
 servicio responde «Falta el token de autenticación», así que reconoce la
 primera y rechaza el valor.
 
-**Hay que pedirle a GESMOVIL un token de COMBUSES para esa maestra.** Con él:
+**Hay que pedirle a GESMOVIL el catálogo, o sacarlo del portal con F12.** Si
+algún día aparece un token que sí abra la maestra, con él:
 
 ```bash
 curl -X POST "https://<ref>.supabase.co/functions/v1/sicov-sync-catalogos" \

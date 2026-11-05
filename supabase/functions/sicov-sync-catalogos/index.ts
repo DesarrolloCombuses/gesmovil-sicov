@@ -32,6 +32,10 @@
  *     si sirve para nivelservicio y clase-vehiculo, que no necesitamos.
  *   - Ninguna variante del endpoint es publica: /api/v1 responde "Token
  *     invalido" y las demas rutas no existen.
+ *   - El token de proveedor tecnologico que emitio la Supertransporte el
+ *     23-oct a nombre de GESMOVIL tampoco sirve: "Error en el token",
+ *     verificado el 4-nov-2026. Lo rechaza un middleware llamado
+ *     AutenticacionVigia, asi que parece esperar la sesion del portal.
  *
  * Como conseguir el catalogo sin esperar el token: el portal SINST-VIGIA 2
  * llama a esta misma maestra con la sesion del usuario. Entrando con las

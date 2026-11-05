@@ -46,3 +46,15 @@ desktop.ini
 # Python: cache de modulos de los generadores de Word.
 __pycache__/
 *.pyc
+
+# Comprimidos que llegan de afuera. El de la Supertransporte trae el token del
+# proveedor tecnologico en claro, y un 'git add .' lo subiria sin que nadie lo
+# note: el .rar no dice 'credencial' en ninguna parte del nombre.
+*.rar
+*.zip
+*.7z
+
+# El Excel de homologacion lo genera scripts/generar-excel-homologacion.py a
+# partir del checklist vivo. Versionarlo guardaria una foto que envejece en
+# cuanto alguien agrega una actividad.
+*.xlsx
