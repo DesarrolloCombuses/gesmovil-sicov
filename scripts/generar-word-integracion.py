@@ -32,7 +32,7 @@ FONDO_CODIGO = "F4F6F9"
 FONDO_CABECERA = "1A4FA0"
 FONDO_FILA = "F7F9FC"
 
-FECHA = "4 de noviembre de 2026"
+FECHA = "5 de noviembre de 2026"
 BASE_URL = "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil"
 
 doc = Document()
@@ -416,13 +416,13 @@ codigo(
         '      "fechaAlistamiento": "2026-09-22 17:37:56",',
         '      "responsable": {',
         '        "tipoIdentificacion": 1,',
-        '        "numeroIdentificacion": "75083542",',
-        '        "nombre": "SANTIAGO BERNAL LONDOÑO"',
+        '        "numeroIdentificacion": "12345678",',
+        '        "nombre": "NOMBRE DEL RESPONSABLE"',
         "      },",
         '      "conductor": {',
         '        "tipoIdentificacion": 1,',
-        '        "numeroIdentificacion": "1038803306",',
-        '        "nombre": "VILLADA FLOREZ GERLI"',
+        '        "numeroIdentificacion": "87654321",',
+        '        "nombre": "NOMBRE DEL CONDUCTOR"',
         "      },",
         '      "detalleActividades": "Niveles de aceite de motor, Fugas del motor",',
         '      "actividades": [1000, 1001]',
@@ -448,7 +448,16 @@ tabla(
     [1.7, 0.9, 3.9],
 )
 
-rico([("tipoIdentificacion: 1", "c"), (" es cédula de ciudadanía.", "")])
+rico(
+    [
+        ("tipoIdentificacion: 1", "c"),
+        (
+            " es cédula de ciudadanía. Las cédulas y los nombres de los ejemplos son"
+            " ficticios: la API entrega los reales.",
+            "",
+        ),
+    ]
+)
 
 rico(
     [
@@ -493,8 +502,8 @@ codigo(
         '      "nit": "890920397",',
         '      "razonSocial": "COMPAÑIA METROPOLITANA DE BUSES S.A.",',
         '      "tipoIdentificacion": 1,',
-        '      "numeroIdentificacion": "75083542",',
-        '      "nombresResponsable": "SANTIAGO BERNAL LONDOÑO",',
+        '      "numeroIdentificacion": "12345678",',
+        '      "nombresResponsable": "NOMBRE DEL RESPONSABLE",',
         '      "tipomantenimiento": 1,',
         '      "detalleActividades": "Niveles de aceite de motor, Fugas del motor"',
         "    }",

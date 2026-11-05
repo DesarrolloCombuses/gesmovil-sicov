@@ -3,10 +3,9 @@
 Texto listo para enviar al equipo técnico de GESMOVIL.
 
 GESMOVIL pidió que la API entregue las actividades sin homologar, con los ids
-de COMBUSES, y hacer ellos la homologación. La API v2 hace eso. **Este mensaje
-se envía cuando la v2 ya esté desplegada**: antes, la API sigue respondiendo
-con la v1 y lo que dice el mensaje no sería cierto. Se comprueba en la cabecera
-`X-Api-Version` de cualquier respuesta.
+de COMBUSES, y hacer ellos la homologación. La API v2 hace eso y está en
+producción desde el 4-nov-2026. Comprobado el 5-nov: `X-Api-Version: v2`,
+`/actividades` con 40 actividades y `/alistamientos` con 49 registros del 4-nov.
 
 ---
 
@@ -16,10 +15,14 @@ con la v1 y lo que dice el mensaje no sería cierto. Se comprueba en la cabecera
    proyecto. Las 40 actividades con su id real (1000 a 1039) y dos columnas en
    amarillo para que GESMOVIL anote su homologación. Si el checklist cambia, se
    regenera con `python scripts/generar-excel-homologacion.py`.
-2. **La guía de consumo actualizada a la v2.** El Word se regenera con
-   `python scripts/generar-word-integracion.py`. Para el PDF, abrir el Word y
-   «Guardar como → PDF»: la exportación automática por COM se cuelga desde el
-   4-nov-2026. **No enviar el PDF anterior**, del 23-sep: describe la v1.
+2. **`API SICOV COMBUSES - Guia de consumo.pdf`**, en la raíz del proyecto,
+   versión v2 del 5-nov-2026 (6 páginas). Las cédulas y nombres de sus ejemplos
+   son ficticios. Si hay que rehacerla: `python
+   scripts/generar-word-integracion.py` y, en Word, «Guardar como → PDF».
+   Cualquier PDF de antes del 5-nov describe la v1 y no se envía.
+
+La credencial (`X-API-Key`) no va en este correo: ya la tienen, y si hubiera
+que reenviarla va por canal cifrado.
 
 ---
 
@@ -44,6 +47,11 @@ con la v1 y lo que dice el mensaje no sería cierto. Se comprueba en la cabecera
 >   credencial. Devuelve el catálogo completo: id, descripción, grupo y si está
 >   activa. Si COMBUSES agrega una actividad, aparece ahí con un id nuevo; los
 >   ids no se reutilizan.
+>
+> Ya está disponible, con la misma URL y la misma credencial. Pueden
+> comprobarlo repitiendo la consulta de `/alistamientos` que antes les
+> respondía `503`: ahora responde `200` con los registros, y la cabecera
+> `X-Api-Version` dice `v2`.
 >
 > Adjuntamos la guía de consumo actualizada y un Excel con las 40 actividades
 > actuales. El Excel trae dos columnas en amarillo, para el id y la descripción

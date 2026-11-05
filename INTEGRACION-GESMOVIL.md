@@ -88,13 +88,13 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
       "fechaAlistamiento": "2026-09-22 17:37:56",
       "responsable": {
         "tipoIdentificacion": 1,
-        "numeroIdentificacion": "75083542",
-        "nombre": "SANTIAGO BERNAL LONDOÑO"
+        "numeroIdentificacion": "12345678",
+        "nombre": "NOMBRE DEL RESPONSABLE"
       },
       "conductor": {
         "tipoIdentificacion": 1,
-        "numeroIdentificacion": "1038803306",
-        "nombre": "VILLADA FLOREZ GERLI"
+        "numeroIdentificacion": "87654321",
+        "nombre": "NOMBRE DEL CONDUCTOR"
       },
       "detalleActividades": "Niveles de aceite de motor, Fugas del motor",
       "actividades": [1000, 1001]
@@ -115,7 +115,8 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
 | `actividades` | arreglo | Ids de actividad de COMBUSES (sección 7) |
 | `detalleActividades` | texto | Descripciones de esos ids, en el mismo orden |
 
-`tipoIdentificacion: 1` es cédula de ciudadanía.
+`tipoIdentificacion: 1` es cédula de ciudadanía. Las cédulas y los nombres de
+los ejemplos son ficticios: la API entrega los reales.
 
 **La homologación al catálogo de la Superintendencia la realiza GESMOVIL.** Los
 ids de `actividades` son los de COMBUSES, desde el 1000, y su significado está
@@ -141,8 +142,8 @@ La flota cubierta es la de la ruta **AEROPUERTO**: 54 vehículos, internos 703 a
       "nit": "890920397",
       "razonSocial": "COMPAÑIA METROPOLITANA DE BUSES S.A.",
       "tipoIdentificacion": 1,
-      "numeroIdentificacion": "75083542",
-      "nombresResponsable": "SANTIAGO BERNAL LONDOÑO",
+      "numeroIdentificacion": "12345678",
+      "nombresResponsable": "NOMBRE DEL RESPONSABLE",
       "tipomantenimiento": 1,
       "detalleActividades": "Niveles de aceite de motor, Fugas del motor"
     }
