@@ -11,10 +11,11 @@
  * desde ese manual, asi que cada campo exigido tiene su columna: no hay
  * huecos que rellenar ni codigos que traducir al responder.
  *
- * Endpoints (GET, solo lectura, rango de fechas obligatorio):
+ * Endpoints (GET, solo lectura):
  *
  *   GET /alistamientos?fechaInicio=AAAA-MM-DD&fechaFin=AAAA-MM-DD
  *   GET /mantenimientos?fechaInicio=AAAA-MM-DD&fechaFin=AAAA-MM-DD
+ *   GET /actividades       catalogo de actividades de COMBUSES, sin rango
  *
  * Autenticacion: cabecera  X-API-Key: <key>
  *
@@ -24,15 +25,15 @@
  *     desde un navegador, la API key acabaria dentro de un frontend a la vista
  *     de cualquiera. Que el navegador lo bloquee es la intencion.
  *
- *   - Las actividades salen SIEMPRE con su id OFICIAL de la Supertransporte,
- *     nunca con el id interno de COMBUSES. El formulario usa el checklist
- *     propio (ids desde 1000) y la traduccion se aplica aqui, al leer, contra
- *     sicov_homolog_actividades.
+ *   - Las actividades salen con el id y la descripcion de COMBUSES (ids desde
+ *     1000), tal como las marco el conductor. La homologacion al catalogo de
+ *     la Supertransporte la hace GESMOVIL de su lado: asi lo pidieron, y el
+ *     catalogo oficial no abre con ninguno de los tokens que tenemos. Para que
+ *     puedan traducir, GET /actividades entrega el catalogo completo.
  *
- *   - Si alguna actividad activa del checklist no tiene traduccion, la
- *     respuesta es 503 y no entrega nada. Es todo o nada: un reporte con seis
- *     de treinta puntos se ve valido y no se nota hasta una auditoria. El
- *     mensaje del 503 nombra las que faltan.
+ *     Hasta la v1 era al reves: la API traducia contra
+ *     sicov_homolog_actividades y respondia 503 si faltaba alguna traduccion.
+ *     Esa tabla sigue en la base, pero la API ya no la lee.
  *
  *   - Los despachos y llegadas del manual no estan aqui: esta plataforma cubre
  *     alistamiento y mantenimiento. Pedirlos devuelve 404 con la lista de lo
@@ -45,7 +46,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const VERSION = "v1";
+const VERSION = "v2";
 
 // Alcance que debe tener la credencial en api_clientes.apis. La misma tabla
 // sirve a otras APIs externas del proyecto, asi que el alcance se valida
@@ -347,97 +348,39 @@ function faltaConfig(cfg: Config, claves: string[]): Response | null {
 }
 
 // ---------------------------------------------------------------------------
-// Homologacion: lo nuestro -> lo oficial
+// Actividades: el catalogo de COMBUSES
 // ---------------------------------------------------------------------------
-// Los registros guardan las actividades de COMBUSES (ids desde 1000). Lo que
-// el reporte debe llevar son los ids OFICIALES de la Supertransporte, asi que
-// se traducen aqui, al leer.
-//
-// Traducir al leer y no al guardar es lo que permite que un alistamiento
-// registrado antes de tener el mapeo se pueda reportar despues, sin tocar el
-// registro: el dia que se cargue la homologacion, el historico entero queda
-// reportable.
+// Se lee completo, inactivas incluidas: un alistamiento de hace tres meses
+// puede llevar una actividad que despues se retiro del checklist, y su
+// descripcion tiene que seguir saliendo. Por la misma razon /actividades las
+// entrega todas, con la marca 'activa'.
 
-interface Oficial {
+interface ActividadCatalogo {
   id: number;
   descripcion: string;
+  grupo: string | null;
+  activa: boolean;
+  aplicaAlistamiento: boolean;
+  aplicaMantenimiento: boolean;
 }
 
-/** actividad propia -> las oficiales que la cubren */
-type MapaHomolog = Map<number, Oficial[]>;
-
-async function leerHomologacion(db: ReturnType<typeof createClient>): Promise<MapaHomolog> {
+async function leerCatalogo(db: ReturnType<typeof createClient>): Promise<ActividadCatalogo[]> {
   const { data, error: errDb } = await db
-    .from("sicov_homolog_actividades")
-    .select("actividad_id, sicov_cat_actividades_oficiales ( id, descripcion )");
+    .from("sicov_cat_actividades")
+    .select("id, descripcion, grupo, activa, aplica_alistamiento, aplica_mantenimiento")
+    .order("orden", { ascending: true, nullsFirst: false })
+    .order("id");
 
-  if (errDb) throw new Error(`sicov_homolog_actividades: ${errDb.message}`);
+  if (errDb) throw new Error(`sicov_cat_actividades: ${errDb.message}`);
 
-  const mapa: MapaHomolog = new Map();
-  for (const fila of (data || []) as Fila[]) {
-    const propia = Number(fila.actividad_id);
-    const oficial = fila.sicov_cat_actividades_oficiales as Fila | null;
-    if (!Number.isInteger(propia) || !oficial) continue;
-
-    const lista = mapa.get(propia) ?? [];
-    lista.push({ id: Number(oficial.id), descripcion: String(oficial.descripcion) });
-    mapa.set(propia, lista);
-  }
-  return mapa;
-}
-
-/**
- * Ids de actividad que aparecen en estos registros y no tienen traduccion.
- *
- * Se comprueba contra LOS REGISTROS CONSULTADOS y no contra el catalogo
- * completo. Al principio era al contrario, y era peor por dos razones:
- *
- *   - Imprecisa. Un hueco en cualquier punto del checklist bloqueaba rangos de
- *     fechas cuyos registros si eran traducibles por entero.
- *
- *   - Y sobre todo, inutil para arrancar. Sin el catalogo oficial completo no
- *     habia forma de que la API devolviera un 200 ni una vez, asi que GESMOVIL
- *     no podia probar su cliente contra una respuesta real.
- *
- * Lo que no cambia es que sigue siendo todo o nada por registro: si una sola
- * actividad de un alistamiento no se puede traducir, ese alistamiento no sale.
- * Entregarlo con las demas diria que se verificaron dos puntos cuando fueron
- * cuarenta, y eso no se nota hasta una auditoria.
- */
-function actividadesSinMapeo(registros: Fila[], campo: string, homolog: MapaHomolog): number[] {
-  const faltan = new Set<number>();
-  for (const registro of registros) {
-    const crudas = registro[campo];
-    for (const fila of Array.isArray(crudas) ? (crudas as Fila[]) : []) {
-      const id = Number(fila.actividad_id);
-      if (Number.isInteger(id) && !homolog.has(id)) faltan.add(id);
-    }
-  }
-  return [...faltan].sort((a, b) => a - b);
-}
-
-/** 503 nombrando las actividades que faltan, para que se arregle el mismo dia. */
-async function errorSinHomologar(
-  db: ReturnType<typeof createClient>,
-  ids: number[],
-): Promise<Response> {
-  // Se piden las descripciones: un mensaje con "1002, 1003, 1014" obliga a
-  // consultar la base para saber de que actividades habla.
-  const { data } = await db.from("sicov_cat_actividades").select("descripcion").in("id", ids);
-  const nombres = ((data || []) as Fila[]).map((f) => txt(f.descripcion)).filter(Boolean) as string[];
-
-  const ejemplos = nombres.slice(0, 3).join("; ");
-  const resto = nombres.length > 3 ? ` y ${nombres.length - 3} mas` : "";
-
-  return error(
-    503,
-    // "los registros" y no "los alistamientos": el mismo mensaje lo usan los
-    // dos endpoints, y desde /mantenimientos hablar de alistamientos hace
-    // dudar de si se consulto lo que se queria.
-    `Los registros de este rango incluyen ${ids.length} actividad(es) sin homologar con el ` +
-      `catalogo oficial de la Superintendencia (${ejemplos}${resto}). Los registros se estan ` +
-      `capturando, pero no se pueden reportar hasta completar la homologacion.`,
-  );
+  return ((data || []) as Fila[]).map((f) => ({
+    id: Number(f.id),
+    descripcion: txt(f.descripcion) ?? "",
+    grupo: txt(f.grupo),
+    activa: f.activa === true,
+    aplicaAlistamiento: f.aplica_alistamiento === true,
+    aplicaMantenimiento: f.aplica_mantenimiento === true,
+  }));
 }
 
 interface Actividades {
@@ -446,26 +389,25 @@ interface Actividades {
 }
 
 /**
- * Traduce las actividades de un registro a los dos campos del manual, usando
- * el mapa de homologacion. Varias actividades nuestras pueden caer en la misma
- * oficial (por eso se deduplica) y una nuestra puede cubrir varias.
+ * Los dos campos del manual a partir de las actividades marcadas en un
+ * registro. Salen en el orden del checklist y no en el de captura, y los ids y
+ * las descripciones en el mismo orden entre si.
+ *
+ * Recorrer el catalogo en vez de las marcas no pierde nada: la llave foranea
+ * garantiza que toda actividad marcada existe en el catalogo.
  */
-function aplanarActividades(crudas: unknown, homolog: MapaHomolog): Actividades {
-  const ids: number[] = [];
-  const detalle: string[] = [];
-
+function aplanarActividades(crudas: unknown, catalogo: ActividadCatalogo[]): Actividades {
+  const marcadas = new Set<number>();
   for (const fila of Array.isArray(crudas) ? (crudas as Fila[]) : []) {
-    const propia = Number(fila.actividad_id);
-    if (!Number.isInteger(propia)) continue;
-
-    for (const oficial of homolog.get(propia) ?? []) {
-      if (ids.includes(oficial.id)) continue;
-      ids.push(oficial.id);
-      detalle.push(oficial.descripcion);
-    }
+    const id = Number(fila.actividad_id);
+    if (Number.isInteger(id)) marcadas.add(id);
   }
 
-  return { ids, detalle: detalle.join(", ") };
+  const elegidas = catalogo.filter((a) => marcadas.has(a.id));
+  return {
+    ids: elegidas.map((a) => a.id),
+    detalle: elegidas.map((a) => a.descripcion).join(", "),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -486,7 +428,7 @@ async function endpointAlistamientos(
   rango: Rango,
   _cfg: Config,
 ): Promise<RespuestaEndpoint> {
-  const homolog = await leerHomologacion(db);
+  const catalogo = await leerCatalogo(db);
 
   // Columna por columna, NUNCA '*'. La tabla tiene campos que no pueden salir
   // de aqui: apto_descanso, apto_sustancias y apto_observacion son el
@@ -508,13 +450,8 @@ async function endpointAlistamientos(
 
   if (errDb) throw new Error(`sicov_alistamientos: ${errDb.message}`);
 
-  const registros = (data || []) as Fila[];
-
-  const sinMapeo = actividadesSinMapeo(registros, "sicov_alistamiento_actividades", homolog);
-  if (sinMapeo.length > 0) return { fallo: await errorSinHomologar(db, sinMapeo) };
-
-  const salida = registros.map((f: Fila) => {
-    const act = aplanarActividades(f.sicov_alistamiento_actividades, homolog);
+  const salida = ((data || []) as Fila[]).map((f: Fila) => {
+    const act = aplanarActividades(f.sicov_alistamiento_actividades, catalogo);
     return {
       alistamiento_id: f.id,
       placa: txt(f.placa),
@@ -550,7 +487,7 @@ async function endpointMantenimientos(
   const faltaCfg = faltaConfig(cfg, ["nit", "razon_social"]);
   if (faltaCfg) return { fallo: faltaCfg };
 
-  const homolog = await leerHomologacion(db);
+  const catalogo = await leerCatalogo(db);
 
   const { data, error: errDb } = await db
     .from("sicov_mantenimientos")
@@ -565,17 +502,8 @@ async function endpointMantenimientos(
 
   if (errDb) throw new Error(`sicov_mantenimientos: ${errDb.message}`);
 
-  const registros = (data || []) as Fila[];
-
-  // Un mantenimiento puede no llevar ninguna actividad del catalogo, porque
-  // admite detalle libre. Pero si lleva alguna sin homologar, saldria con el
-  // detalle recortado -- y un detalle recortado no se distingue de uno bien
-  // descrito. Se corta.
-  const sinMapeo = actividadesSinMapeo(registros, "sicov_mantenimiento_actividades", homolog);
-  if (sinMapeo.length > 0) return { fallo: await errorSinHomologar(db, sinMapeo) };
-
-  const salida = registros.map((f: Fila) => {
-    const act = aplanarActividades(f.sicov_mantenimiento_actividades, homolog);
+  const salida = ((data || []) as Fila[]).map((f: Fila) => {
+    const act = aplanarActividades(f.sicov_mantenimiento_actividades, catalogo);
     return {
       mantenimiento_id: f.id,
       fecha: txt(f.fecha),
@@ -587,8 +515,8 @@ async function endpointMantenimientos(
       numeroIdentificacion: txt(f.responsable_num_id),
       nombresResponsable: txt(f.responsable_nombre),
       tipomantenimiento: Number(f.tipo),
-      // Se prefiere el detalle armado con las descripciones oficiales; el
-      // texto libre solo entra si no se marco ninguna actividad del catalogo.
+      // Se prefiere el detalle armado con las descripciones del catalogo; el
+      // texto libre solo entra si no se marco ninguna actividad.
       detalleActividades: act.detalle || txt(f.detalle_libre) || "",
     };
   });
@@ -638,12 +566,22 @@ Deno.serve(async (req) => {
     }
     cliente = auth.cliente;
 
+    // El catalogo va antes de leer el rango porque no depende de fechas: es
+    // lo que GESMOVIL necesita para traducir los ids, y no tiene por que
+    // inventar un rango para pedirlo.
+    if (endpoint === "actividades") {
+      const catalogo = await leerCatalogo(db);
+      const respuesta = ok(catalogo);
+      await registrarAcceso(db, cliente, req, endpoint, respuesta.status, null, catalogo.length);
+      return respuesta;
+    }
+
     const manejador = MANEJADORES[endpoint];
     if (!manejador) {
       await registrarAcceso(db, cliente, req, endpoint, 404, null, null);
       return error(
         404,
-        "Endpoint no encontrado. Esta plataforma expone alistamientos y mantenimientos; despachos y llegadas no estan en su alcance.",
+        "Endpoint no encontrado. Esta plataforma expone alistamientos, mantenimientos y actividades; despachos y llegadas no estan en su alcance.",
       );
     }
 

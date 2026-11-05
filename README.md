@@ -17,10 +17,16 @@ propuesta económica de GESMOVIL) están en la raíz del repo.
 
 ## La decisión que lo ordena todo
 
-**El checklist son las actividades oficiales de la Supertransporte, guardadas
-por su id oficial.** No hay tabla de homologación en ningún punto del sistema,
-porque no hay nada que traducir: el id que el conductor marca es el mismo que
-viaja en el reporte.
+**Las actividades viajan con el id de COMBUSES, y la homologación al catálogo
+de la Supertransporte la hace GESMOVIL de su lado.** El id que el conductor
+marca es el mismo que sale por la API (desde el 1000), y `GET /actividades`
+le entrega a GESMOVIL el catálogo para traducirlo.
+
+Así quedó desde la v2 de la API (4-nov-2026), a pedido de GESMOVIL. El catálogo
+oficial no abre con ninguno de los tokens que tenemos (ver «El catálogo de
+actividades»), y hasta entonces la API traducía de nuestro lado y respondía 503
+mientras faltaran traducciones. La tabla `sicov_homolog_actividades` sigue en
+la base, pero la API ya no la lee.
 
 Eso es lo que se gana al diseñar el modelo desde el manual en vez de adaptar
 tablas que ya existían para otra cosa. Cada campo que el manual exige tiene su
@@ -96,7 +102,7 @@ La app queda en **https://desarrollocombuses.github.io/gesmovil-sicov-web/**
 ### Modelo de datos
 
 ```
-sicov_cat_actividades          catálogo oficial (la PK es el id de la Supertransporte)
+sicov_cat_actividades          checklist de COMBUSES (ids desde 1000)
 sicov_config                   NIT, razón social, responsable del proceso
 sicov_usuarios                 quién puede registrar mantenimientos
 
@@ -273,7 +279,8 @@ Android recorta hasta un 20% por lado.
 
 ## El catálogo de actividades
 
-Esto es lo único que bloquea la puesta en marcha, y no es código.
+Desde la v2 de la API ya no bloquea nada: GESMOVIL homologa de su lado. Esta
+sección queda como registro de por qué no lo hacemos nosotros.
 
 Verificado el 21-sep-2026 contra los servicios reales:
 
@@ -295,39 +302,23 @@ La cabecera correcta es `Authorization: Bearer` — con `token:` o `x-token:` el
 servicio responde «Falta el token de autenticación», así que reconoce la
 primera y rechaza el valor.
 
-**Hay que pedirle a GESMOVIL el catálogo, o sacarlo del portal con F12.** Si
-algún día aparece un token que sí abra la maestra, con él:
+`sicov-sync-catalogos` sigue en el repositorio por si algún día aparece un
+token que abra la maestra, pero la API no depende de él.
 
-```bash
-curl -X POST "https://<ref>.supabase.co/functions/v1/sicov-sync-catalogos" \
-     -H "Authorization: Bearer $SERVICE_ROLE_KEY"
-```
+### Lo que cambia en el checklist
 
-### Mientras llega
-
-Los formularios se pintan **desde la tabla**, así que sembrarla a mano funciona
-igual y el sync posterior la corrige. El manual solo muestra dos actividades
-oficiales en su ejemplo, y son las únicas que se pueden afirmar:
-
-```sql
-insert into sicov_cat_actividades (id, descripcion, grupo, orden) values
-  (1, 'Fugas del motor',            'Motor', 1),
-  (4, 'Niveles de aceite de motor', 'Motor', 2)
-on conflict (id) do nothing;
-```
-
-No inventes los demás ids: un id equivocado hace que el reporte afirme que se
-verificó algo distinto de lo que se verificó.
-
-El sincronizador desactiva (no borra) lo que ya no venga en la maestra: los
-alistamientos históricos apuntan a esos ids y su reporte debe seguir siendo
-reproducible.
+Como GESMOVIL traduce nuestros ids, **un id nunca debe cambiar de
+significado**. Corregir una tilde en una descripción está bien; convertir la
+actividad 1012 en otra cosa no, porque GESMOVIL la seguiría reportando con la
+traducción vieja. Para una actividad nueva se inserta una fila (id nuevo) y la
+que ya no aplique se desactiva con `activa = false`, sin borrarla.
 
 ## La API para GESMOVIL
 
 ```
 GET /sicov-gesmovil/alistamientos?fechaInicio=AAAA-MM-DD&fechaFin=AAAA-MM-DD
 GET /sicov-gesmovil/mantenimientos?fechaInicio=AAAA-MM-DD&fechaFin=AAAA-MM-DD
+GET /sicov-gesmovil/actividades
 ```
 
 Autenticación: cabecera `X-API-Key`. Respuesta `{ success, data }`.
@@ -423,8 +414,9 @@ en una lista pública y antes de reportarlo.
 
 ## Pendiente
 
-- **El token de la maestra de actividades** (ver arriba). Es el único bloqueo
-  real.
+- **La tabla de homologación de GESMOVIL.** Se les pidió una copia (id de
+  COMBUSES → id oficial): sin ella, COMBUSES no puede ver a qué actividad
+  oficial se traduce cada una de las suyas.
 - **`employees` sirve mejor de lo que parecía.** Un comentario en
   `preoperacional-publico` dice que la tabla solo tiene unos pocos conductores
   bien marcados, pero eso era filtrando por las dos rutas del preoperacional

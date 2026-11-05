@@ -2,10 +2,11 @@
 """
 Genera el Excel que GESMOVIL llena para homologar las actividades.
 
-GESMOVIL ofrecio hacer la homologacion si les enviamos nuestras actividades con
-sus ids. Este archivo es eso: las 40 del checklist con su id de COMBUSES, y dos
-columnas amarillas donde ellos escriben el id y la descripcion oficial. Lo que
-devuelvan se carga con supabase/cargar-catalogo-oficial.sql.
+Desde la v2 de la API, GESMOVIL homologa de su lado los ids que la API entrega.
+Este archivo es el catalogo que necesitan para hacerlo: las actividades del
+checklist con su id de COMBUSES, y dos columnas amarillas donde escriben el id
+y la descripcion oficial. Se les pide devolverlo lleno, porque es la unica
+copia que COMBUSES tendria de a que se traduce cada actividad suya.
 
 DE DONDE SALEN LOS IDS: de GET /sicov-alistar/formulario, el mismo endpoint con
 el que el formulario del conductor pinta el checklist. No se pueden copiar de
@@ -82,7 +83,8 @@ def main():
 
     # --- Leyenda: que se llena y como ------------------------------------
     leyenda = [
-        ("Qué llenar:", "las columnas amarillas, D y E. Las columnas A, B y C son de COMBUSES; por favor no las modifiquen."),
+        ("Ids:", "los de la columna A son los que la API envía en el campo actividades. El catálogo actualizado está en GET /actividades."),
+        ("Qué llenar:", "las columnas amarillas, D y E, con la homologación que construyan, y devolvernos el archivo. Las columnas A, B y C son de COMBUSES; por favor no las modifiquen."),
         ("Varias oficiales:", "si una actividad de COMBUSES cubre varias oficiales, escriban todos los ids separados por coma (por ejemplo: 12, 15)."),
         ("Sin equivalente:", "escriban NO APLICA en la columna D, en lugar de asignar la actividad oficial más parecida."),
         ("Filas de ejemplo:", "las dos primeras ya vienen llenas con los ids del ejemplo del manual. Muestran el formato; les agradecemos confirmarlas."),

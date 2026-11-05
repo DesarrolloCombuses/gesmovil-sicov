@@ -1,60 +1,56 @@
-# Solicitud a GESMOVIL — homologación de las actividades de alistamiento
+# Mensaje a GESMOVIL — actividades sin homologar (API v2)
 
-Texto listo para enviar al equipo técnico de GESMOVIL. Es lo único que falta
-para que puedan empezar a leer los alistamientos reales de COMBUSES.
+Texto listo para enviar al equipo técnico de GESMOVIL.
 
-GESMOVIL ofreció hacer la homologación si les enviamos nuestras actividades con
-sus ids. El mensaje acepta y les pide devolver el resultado para cargarlo de
-nuestro lado. Las razones están en las notas internas, al final.
+GESMOVIL pidió que la API entregue las actividades sin homologar, con los ids
+de COMBUSES, y hacer ellos la homologación. La API v2 hace eso. **Este mensaje
+se envía cuando la v2 ya esté desplegada**: antes, la API sigue respondiendo
+con la v1 y lo que dice el mensaje no sería cierto. Se comprueba en la cabecera
+`X-Api-Version` de cualquier respuesta.
 
 ---
 
-## El adjunto
+## Adjuntos
 
-**`Actividades COMBUSES - homologacion GESMOVIL.xlsx`**, en la raíz del
-proyecto. Trae las 40 actividades con su id real (1000 a 1039), una leyenda de
-qué llenar y las columnas D y E en amarillo para GESMOVIL.
-
-Si el checklist cambia antes de enviarlo, se regenera con:
-
-```
-python scripts/generar-excel-homologacion.py
-```
-
-Lee los ids del mismo endpoint con el que el formulario del conductor pinta el
-checklist, así que salen como están en la base. Para comprobarlo desde
-Supabase está [supabase/exportar-actividades-gesmovil.sql](supabase/exportar-actividades-gesmovil.sql).
+1. **`Actividades COMBUSES - homologacion GESMOVIL.xlsx`**, en la raíz del
+   proyecto. Las 40 actividades con su id real (1000 a 1039) y dos columnas en
+   amarillo para que GESMOVIL anote su homologación. Si el checklist cambia, se
+   regenera con `python scripts/generar-excel-homologacion.py`.
+2. **La guía de consumo actualizada a la v2.** El Word se regenera con
+   `python scripts/generar-word-integracion.py`. Para el PDF, abrir el Word y
+   «Guardar como → PDF»: la exportación automática por COM se cuelga desde el
+   4-nov-2026. **No enviar el PDF anterior**, del 23-sep: describe la v1.
 
 ---
 
 ## Mensaje
 
-> **Asunto:** Actividades de alistamiento de COMBUSES para homologar — SINST-VIGIA 2
+> **Asunto:** API SICOV de COMBUSES — actividades con ids de COMBUSES (v2)
 >
 > Buen día.
 >
-> Como acordamos, adjuntamos en Excel las 40 actividades de alistamiento que
-> verifica COMBUSES, cada una con su id en nuestro sistema (columna A).
+> Como lo solicitaron, la API ya entrega las actividades sin homologar, con los
+> ids de COMBUSES, para que ustedes hagan la homologación de su lado.
 >
-> El archivo trae dos columnas en amarillo para que ustedes las completen:
+> Los cambios, en la versión `v2` del contrato:
 >
-> - **Id oficial Supertransporte (D):** el id de la actividad equivalente en el
->   catálogo de la Superintendencia. Si una actividad nuestra cubre varias
->   oficiales, todos los ids separados por coma.
-> - **Descripción oficial (E):** la descripción tal como figura en el catálogo,
->   porque es la que viaja en `detalleActividades`.
+> - En `/alistamientos`, el campo `actividades` lleva los ids de COMBUSES (del
+>   1000 en adelante) y `detalleActividades` sus descripciones, en el mismo
+>   orden.
+> - Ya no hay respuestas `503` por actividades sin homologar: cualquier rango
+>   con registros responde `200`. Los registros reales empiezan el 22 de
+>   septiembre de 2026.
+> - Nuevo endpoint `GET /actividades`, sin parámetros y con la misma
+>   credencial. Devuelve el catálogo completo: id, descripción, grupo y si está
+>   activa. Si COMBUSES agrega una actividad, aparece ahí con un id nuevo; los
+>   ids no se reutilizan.
 >
-> Si alguna no tiene equivalente oficial, por favor escriban **NO APLICA** en
-> lugar de asignarle la más parecida.
->
-> Las dos primeras ya vienen llenas (`4` Niveles de aceite de motor y `1` Fugas
-> del motor), tomadas del ejemplo del manual. Les agradecemos confirmarlas.
->
-> Les pedimos devolvernos el mismo archivo con esas columnas llenas. Con el
-> archivo de vuelta lo cargamos en nuestra base, y la API empieza a
-> entregar los ids oficiales en el campo `actividades` tal como lo describe el
-> manual, sin cambios en su cliente. Todo lo capturado desde el 22 de
-> septiembre queda disponible de inmediato.
+> Adjuntamos la guía de consumo actualizada y un Excel con las 40 actividades
+> actuales. El Excel trae dos columnas en amarillo, para el id y la descripción
+> oficial. Cuando tengan la homologación, les pedimos devolvérnoslo lleno:
+> COMBUSES responde por lo que se reporta a su nombre y queremos tener a la vista
+> a qué actividad oficial se traduce cada una de las nuestras. Si alguna no
+> tiene equivalente oficial, por favor márquenla **NO APLICA**.
 >
 > Aparte: el 23 de octubre la Supertransporte nos entregó el token de proveedor
 > tecnológico a nombre de GESMOVIL SAS (NIT 900853057). ¿Ya lo recibieron
@@ -69,56 +65,39 @@ Supabase está [supabase/exportar-actividades-gesmovil.sql](supabase/exportar-ac
 
 ### Por qué pedimos la tabla de vuelta
 
-GESMOVIL podría guardar la homologación solo en su sistema y que nuestra API
-entregara los ids de COMBUSES. Se les pide devolverla porque:
+Con la v2, la traducción de nuestros ids a los oficiales vive solo en el
+sistema de GESMOVIL. COMBUSES es el sujeto obligado y responde por la veracidad
+de lo reportado (cotización, sección 2.5), así que necesita poder revisar esa
+traducción. Si GESMOVIL no la devuelve, insistir.
 
-- **COMBUSES es el sujeto obligado** y responde por la veracidad de lo que se
-  reporta (cotización, sección 2.5). Con la tabla en nuestra base se puede
-  revisar en cualquier momento qué se reporta en nombre de COMBUSES
-  (`sicov_v_cobertura`). En el sistema de GESMOVIL sería una caja negra.
-- **La API no cambia.** El manual pide ids oficiales en `actividades`, y la API
-  ya está construida así. Entregar ids propios exigiría modificarla y
-  redesplegarla.
-- **Si algún día se cambia de proveedor, la homologación se queda en COMBUSES.**
-- **Un cambio en el checklist se nota de inmediato.** Si se agrega una
-  actividad, la API responde 503 nombrándola. Con la homologación del lado de
-  GESMOVIL, el id nuevo les llegaría sin traducción y no sabemos qué haría su
-  sistema con él.
+### Un id nunca cambia de significado
 
-Si GESMOVIL insiste en quedarse con el mapeo, hay que cambiar la API para que
-entregue los ids propios. Es una decisión, no un obstáculo técnico.
+GESMOVIL traduce por id. Si una actividad existente se reescribe para que
+signifique otra cosa, ellos la seguirán reportando con la traducción vieja.
+Las actividades nuevas van con fila nueva, y las que ya no apliquen se
+desactivan sin borrarlas. Ver «Lo que cambia en el checklist» en el README.
 
-### Si alguna vuelve como NO APLICA
+### NO APLICA ya no requiere cambios de nuestro lado
 
-Hoy la API no lo soporta. Una actividad sin fila en `sicov_homolog_actividades`
-bloquea con 503 todo el rango donde aparezca, y no hay forma de decir «esta no
-se reporta a propósito». Las candidatas son las de Documentación y Conductor.
-
-Si llega alguna, hay que agregar esa marca al catálogo y que la API la omita
-del reporte. Es un cambio pequeño, pero requiere una migración y redesplegar
-`sicov-gesmovil`, y para eso hace falta `supabase login`.
-
-### Al recibir el archivo
-
-Se carga con `supabase/cargar-catalogo-oficial.sql`: la PARTE 1 con los pares
-(id oficial, descripción oficial) y la PARTE 4 con los pares (id COMBUSES, id
-oficial). La PARTE 2, que empareja por descripción, sobra en este caso.
+Con la v1, una actividad sin equivalente oficial habría bloqueado la API con
+503. Con la v2 la API no traduce nada: si GESMOVIL marca una como NO APLICA,
+simplemente no la reportan.
 
 ### Las 40 actividades no las ha revisado el jefe de mantenimiento
 
 Se armaron con el preoperacional que ya usaba COMBUSES y los requisitos del PESV
-(Res. 40595/2022) y del Decreto 431/2017. Si él cambia alguna después de que
-GESMOVIL devuelva la homologación, esa actividad vuelve a quedar sin traducir.
+(Res. 40595/2022) y del Decreto 431/2017. Cualquier cambio posterior hay que
+avisárselo a GESMOVIL para que actualicen su homologación.
 
-### Actividad «Baterías: … ajustes de bordes …»
+### Actividad 1008, «Baterías: … ajustes de bordes …»
 
 En una batería los terminales son los «bornes», pero según el comentario de
 `supabase/seed-checklist.sql` esta descripción se copió tal cual de una
-actividad oficial. Lo más probable es que el «bordes» venga del catálogo de la
-Supertransporte, así que **no corregirla**. Con la homologación por id, además,
-el texto ya no afecta el emparejamiento.
+actividad oficial, así que el «bordes» probablemente viene del catálogo de la
+Supertransporte. Con la homologación por id, corregirla o no ya no afecta el
+reporte.
 
-### Tokens que no abren el catálogo
+### Tokens que no abren el catálogo oficial
 
 **El token de la maestra que trae el manual no sirve** para
 `listar-actividades`: responde «Error en el token». Verificado contra el
@@ -130,7 +109,3 @@ que no necesitamos.
 23-oct a nombre de GESMOVIL SAS. Probado el 4-nov-2026: mismo «Error en el
 token». Es la credencial de GESMOVIL para transmitir, no para leer maestras.
 No copiarlo a ningún archivo del repositorio.
-
-Si GESMOVIL no respondiera, el catálogo se puede sacar del portal: entrando a
-SINST-VIGIA 2 con las credenciales de COMBUSES, en F12 → Network →
-`listar-actividades` está el JSON completo.

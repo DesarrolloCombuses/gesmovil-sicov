@@ -20,6 +20,7 @@ alistamiento-mantenimientos-despachos*.
 |---|---|---|
 | `GET` | `/alistamientos` | Disponible |
 | `GET` | `/mantenimientos` | Disponible |
+| `GET` | `/actividades` | Disponible. Catálogo de actividades de COMBUSES |
 | — | `/despachos`, `/llegadas` | No disponibles. Responden `404`. |
 
 ## 2. URL base
@@ -46,7 +47,8 @@ La credencial se entrega por canal cifrado, aparte de este documento.
 
 ## 4. Parámetros
 
-Ambos endpoints reciben los mismos, y los dos son obligatorios.
+`/alistamientos` y `/mantenimientos` reciben los mismos, y los dos son
+obligatorios. `/actividades` no recibe parámetros.
 
 | Parámetro | Formato | Regla |
 |---|---|---|
@@ -95,7 +97,7 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
         "nombre": "VILLADA FLOREZ GERLI"
       },
       "detalleActividades": "Niveles de aceite de motor, Fugas del motor",
-      "actividades": [4, 1]
+      "actividades": [1000, 1001]
     }
   ]
 }
@@ -110,10 +112,14 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
 | `fechaAlistamiento` | texto | Fecha y hora, en hora de Colombia (`-05:00`) |
 | `responsable` | objeto | Responsable del proceso |
 | `conductor` | objeto | Conductor que registró |
-| `actividades` | arreglo | Ids oficiales de la Superintendencia |
+| `actividades` | arreglo | Ids de actividad de COMBUSES (sección 7) |
 | `detalleActividades` | texto | Descripciones de esos ids, en el mismo orden |
 
 `tipoIdentificacion: 1` es cédula de ciudadanía.
+
+**La homologación al catálogo de la Superintendencia la realiza GESMOVIL.** Los
+ids de `actividades` son los de COMBUSES, desde el 1000, y su significado está
+en `GET /actividades`.
 
 Hay como máximo **un alistamiento por placa y por día**. Una corrección
 modifica ese registro y conserva su `alistamiento_id`.
@@ -159,7 +165,54 @@ La flota cubierta es la de la ruta **AEROPUERTO**: 54 vehículos, internos 703 a
 Este endpoint **no devuelve un arreglo `actividades`**: el manual pide el
 detalle como texto.
 
-## 7. Códigos de respuesta
+## 7. `GET /actividades`
+
+Catálogo completo de actividades de COMBUSES. Es la referencia para homologar
+los ids que viajan en `actividades`.
+
+```bash
+curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/actividades" \
+     -H "X-API-Key: <credencial>"
+```
+
+### Respuesta
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1000,
+      "descripcion": "Niveles de aceite de motor",
+      "grupo": "Motor y fluidos",
+      "activa": true,
+      "aplicaAlistamiento": true,
+      "aplicaMantenimiento": true
+    }
+  ]
+}
+```
+
+### Campos
+
+| Campo | Tipo | Descripción |
+|---|---|---|
+| `id` | entero | El id que viaja en `actividades` |
+| `descripcion` | texto | La que viaja en `detalleActividades` |
+| `grupo` | texto | Agrupación dentro del checklist |
+| `activa` | booleano | `false` si se retiró del checklist |
+| `aplicaAlistamiento` | booleano | Se verifica en el alistamiento diario |
+| `aplicaMantenimiento` | booleano | Se usa en mantenimientos |
+
+Las actividades retiradas siguen apareciendo con `activa: false`, porque los
+registros anteriores pueden llevarlas. Los ids no se reutilizan: si COMBUSES
+agrega una actividad, aparece aquí con un id nuevo.
+
+Para homologar conviene usar el arreglo `actividades` y no el texto de
+`detalleActividades`. Ese texto une las descripciones con comas, y algunas
+descripciones tienen comas propias.
+
+## 8. Códigos de respuesta
 
 | Código | Significado | Acción |
 |---|---|---|
@@ -168,7 +221,7 @@ detalle como texto.
 | `401` | Credencial ausente, inválida o vencida | Revisar la credencial |
 | `404` | Sin registros en el rango | Tratar como cero registros, no como error |
 | `429` | Límite de peticiones excedido | Esperar lo indicado en `Retry-After` |
-| `503` | Servicio no disponible temporalmente | Ver abajo |
+| `503` | Falta configuración de COMBUSES | Reportarlo a COMBUSES |
 | `500` | Fallo inesperado | Reintentar; si persiste, reportar |
 
 Los errores llegan con la misma envoltura:
@@ -185,21 +238,14 @@ fallo de integración.
 
 ### Sobre el `503`
 
-Aparece cuando algún registro del rango consultado incluye una actividad que
-todavía no tiene asignado su id oficial de la Superintendencia. El `message`
-indica cuántas son y nombra las primeras.
-
-La comprobación es **por registro, no sobre el catálogo completo**: un rango
-puede responder `200` mientras otro responde `503`.
-
-**Se solicita a GESMOVIL el catálogo oficial de actividades de alistamiento**
-(id y descripción de cada una). Una vez cargado, los registros ya capturados
-quedan disponibles de inmediato, incluido el histórico.
+Aparece si falta un dato de configuración de COMBUSES que el manual exige, como
+el NIT o la razón social en `/mantenimientos`. El `message` nombra el dato. No
+depende de la consulta: se resuelve del lado de COMBUSES.
 
 ### Rango de prueba
 
-Para poder programar y validar el consumo antes de que ese catálogo esté
-cargado, hay registros de prueba disponibles:
+Los registros reales empiezan el 22 de septiembre de 2026. Antes de esa fecha
+hay registros de prueba:
 
 | Rango | Contenido |
 |---|---|
@@ -211,33 +257,39 @@ lleva 2 actividades; uno real lleva 40. El campo `actividades` es un arreglo en
 ambos casos.
 
 Estos registros **se retirarán antes de la puesta en producción** y no deben
-transmitirse a la Superintendencia. Las consultas fuera de ese rango responden
-hoy `503` o `404`.
+transmitirse a la Superintendencia.
 
-## 8. Cabeceras de respuesta
+## 9. Cabeceras de respuesta
 
 | Cabecera | Contenido |
 |---|---|
-| `X-Api-Version` | Versión del contrato (`v1`) |
+| `X-Api-Version` | Versión del contrato (`v2`) |
 | `X-Total-Registros` | Número de elementos en `data` |
 | `Cache-Control` | `no-store` |
 
-## 9. Recomendaciones de consumo
+La `v2` cambió el contenido de `actividades`: en la `v1` llevaba ids oficiales
+de la Superintendencia, y desde la `v2` lleva los ids de COMBUSES.
+
+## 10. Recomendaciones de consumo
 
 - **Una consulta diaria** del día anterior cubre la operación normal.
 - **Reprocesar los últimos días** periódicamente: un registro puede corregirse
   después de haber sido consultado y conserva su id. Conviene usar el id como
   clave de actualización, no insertar siempre.
 - **No asumir orden** en el arreglo `actividades`.
+- **Consultar `/actividades` a diario.** Un id de `actividades` que no esté en
+  la tabla de homologación de GESMOVIL indica que COMBUSES agregó una
+  actividad.
 - **Conservar el `message`** de los errores: indica la causa concreta.
 
-## 10. Soporte
+## 11. Soporte
 
 Dudas del contrato, credenciales o incidencias: área de desarrollo de COMBUSES.
 
 Para cerrar la integración se requiere de GESMOVIL:
 
-1. El catálogo oficial de actividades de alistamiento con sus ids (sección 7).
+1. Copia de la tabla de homologación que construyan (id de COMBUSES → id
+   oficial), para que COMBUSES pueda verificar lo que se reporta a su nombre.
 2. Confirmación de que el consumo funciona con la credencial entregada.
 3. La IP o rango de IP desde donde consumirán, si se desea restringir el acceso.
 4. Confirmación de si VIGIA 2 espera el NIT con dígito de verificación. Hoy

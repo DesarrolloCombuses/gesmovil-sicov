@@ -32,7 +32,7 @@ FONDO_CODIGO = "F4F6F9"
 FONDO_CABECERA = "1A4FA0"
 FONDO_FILA = "F7F9FC"
 
-FECHA = "23 de septiembre de 2026"
+FECHA = "4 de noviembre de 2026"
 BASE_URL = "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil"
 
 doc = Document()
@@ -302,7 +302,7 @@ tabla(
         ["URL base", "|" + BASE_URL],
         ["Autenticación", "|X-API-Key"],
         ["Formato", "JSON"],
-        ["Versión del contrato", "|v1"],
+        ["Versión del contrato", "|v2"],
         ["Fecha del documento", FECHA],
     ],
     [1.5, 5.0],
@@ -323,6 +323,7 @@ tabla(
     [
         ["|GET", "|/alistamientos", "Disponible"],
         ["|GET", "|/mantenimientos", "Disponible"],
+        ["|GET", "|/actividades", "Disponible. Catálogo de actividades de COMBUSES"],
         ["—", "|/despachos, /llegadas", "No disponibles. Responden 404."],
     ],
     [0.9, 2.3, 3.3],
@@ -349,7 +350,16 @@ vineta_rica(
 # ===========================================================================
 h1("3. Parámetros")
 
-par("Ambos endpoints reciben los mismos, y los dos son obligatorios.")
+rico(
+    [
+        ("/alistamientos", "c"),
+        (" y ", ""),
+        ("/mantenimientos", "c"),
+        (" reciben los mismos, y los dos son obligatorios. ", ""),
+        ("/actividades", "c"),
+        (" no recibe parámetros.", ""),
+    ]
+)
 
 tabla(
     ["Parámetro", "Formato", "Regla"],
@@ -415,7 +425,7 @@ codigo(
         '        "nombre": "VILLADA FLOREZ GERLI"',
         "      },",
         '      "detalleActividades": "Niveles de aceite de motor, Fugas del motor",',
-        '      "actividades": [4, 1]',
+        '      "actividades": [1000, 1001]',
         "    }",
         "  ]",
         "}",
@@ -432,13 +442,24 @@ tabla(
         ["|fechaAlistamiento", "texto", "Fecha y hora, en hora de Colombia (-05:00)"],
         ["|responsable", "objeto", "Responsable del proceso"],
         ["|conductor", "objeto", "Conductor que registró"],
-        ["|actividades", "arreglo", "Ids oficiales de la Superintendencia"],
+        ["|actividades", "arreglo", "Ids de actividad de COMBUSES (sección 6)"],
         ["|detalleActividades", "texto", "Descripciones de esos ids, en el mismo orden"],
     ],
     [1.7, 0.9, 3.9],
 )
 
 rico([("tipoIdentificacion: 1", "c"), (" es cédula de ciudadanía.", "")])
+
+rico(
+    [
+        ("La homologación al catálogo de la Superintendencia la realiza GESMOVIL.", "b"),
+        (" Los ids de ", ""),
+        ("actividades", "c"),
+        (" son los de COMBUSES, desde el 1000, y su significado está en ", ""),
+        ("GET /actividades", "c"),
+        (".", ""),
+    ]
+)
 
 rico(
     [
@@ -508,7 +529,74 @@ rico(
 )
 
 # ===========================================================================
-h1("6. Códigos de respuesta")
+h1("6. GET /actividades")
+
+par(
+    "Catálogo completo de actividades de COMBUSES. Es la referencia para "
+    "homologar los ids que viajan en actividades."
+)
+
+codigo(
+    [
+        'curl "' + BASE_URL + '/actividades" \\',
+        '     -H "X-API-Key: <credencial>"',
+    ]
+)
+
+h2("Respuesta")
+
+codigo(
+    [
+        "{",
+        '  "success": true,',
+        '  "data": [',
+        "    {",
+        '      "id": 1000,',
+        '      "descripcion": "Niveles de aceite de motor",',
+        '      "grupo": "Motor y fluidos",',
+        '      "activa": true,',
+        '      "aplicaAlistamiento": true,',
+        '      "aplicaMantenimiento": true',
+        "    }",
+        "  ]",
+        "}",
+    ]
+)
+
+h2("Campos")
+
+tabla(
+    ["Campo", "Tipo", "Descripción"],
+    [
+        ["|id", "entero", "El id que viaja en actividades"],
+        ["|descripcion", "texto", "La que viaja en detalleActividades"],
+        ["|grupo", "texto", "Agrupación dentro del checklist"],
+        ["|activa", "booleano", "false si se retiró del checklist"],
+        ["|aplicaAlistamiento", "booleano", "Se verifica en el alistamiento diario"],
+        ["|aplicaMantenimiento", "booleano", "Se usa en mantenimientos"],
+    ],
+    [1.7, 0.9, 3.9],
+)
+
+par(
+    "Las actividades retiradas siguen apareciendo con activa: false, porque los "
+    "registros anteriores pueden llevarlas. Los ids no se reutilizan: si COMBUSES "
+    "agrega una actividad, aparece aquí con un id nuevo."
+)
+
+rico(
+    [
+        ("Para homologar conviene usar el arreglo ", ""),
+        ("actividades", "c"),
+        (" y no el texto de ", ""),
+        ("detalleActividades", "c"),
+        (". Ese texto une las descripciones con comas, y algunas descripciones "
+         "tienen comas propias.", ""),
+    ]
+)
+
+# ===========================================================================
+h1("7. Códigos de respuesta")
 
 tabla(
     ["Código", "Significado", "Acción"],
@@ -518,7 +606,7 @@ tabla(
         ["|401", "Credencial ausente, inválida o vencida", "Revisar la credencial"],
         ["|404", "Sin registros en el rango", "Tratar como cero registros, no como error"],
         ["|429", "Límite de peticiones excedido", "Esperar lo indicado en Retry-After"],
-        ["|503", "Servicio no disponible temporalmente", "Ver abajo"],
+        ["|503", "Falta configuración de COMBUSES", "Reportarlo a COMBUSES"],
         ["|500", "Fallo inesperado", "Reintentar; si persiste, reportar"],
     ],
     [0.8, 2.6, 3.1],
@@ -538,20 +626,16 @@ aviso(
 
 aviso(
     "Sobre el 503",
-    "Aparece cuando algún registro del rango consultado incluye una actividad que "
-    "todavía no tiene asignado su id oficial de la Superintendencia. El message "
-    "indica cuántas son y nombra las primeras. La comprobación es por registro, no "
-    "sobre el catálogo completo: un rango puede responder 200 mientras otro "
-    "responde 503. Se solicita a GESMOVIL el catálogo oficial de actividades de "
-    "alistamiento (id y descripción de cada una). Una vez cargado, los registros "
-    "ya capturados quedan disponibles de inmediato, incluido el histórico.",
+    "Aparece si falta un dato de configuración de COMBUSES que el manual exige, "
+    "como el NIT o la razón social en /mantenimientos. El message nombra el dato. "
+    "No depende de la consulta: se resuelve del lado de COMBUSES.",
 )
 
 h2("Rango de prueba")
 
 par(
-    "Para poder programar y validar el consumo antes de que ese catálogo esté "
-    "cargado, hay registros de prueba disponibles:"
+    "Los registros reales empiezan el 22 de septiembre de 2026. Antes de esa "
+    "fecha hay registros de prueba:"
 )
 
 tabla(
@@ -573,25 +657,30 @@ par(
 aviso(
     "Estos registros se retiran antes de la puesta en producción",
     "No deben transmitirse a la Superintendencia: corresponden a alistamientos "
-    "que no ocurrieron. Las consultas fuera de ese rango responden hoy 503 o 404.",
+    "que no ocurrieron.",
     color="FDF0E6",
 )
 
 # ===========================================================================
-h1("7. Cabeceras de respuesta")
+h1("8. Cabeceras de respuesta")
 
 tabla(
     ["Cabecera", "Contenido"],
     [
-        ["|X-Api-Version", "Versión del contrato (v1)"],
+        ["|X-Api-Version", "Versión del contrato (v2)"],
         ["|X-Total-Registros", "Número de elementos en data"],
         ["|Cache-Control", "|no-store"],
     ],
     [2.1, 4.4],
 )
 
+par(
+    "La v2 cambió el contenido de actividades: en la v1 llevaba ids oficiales de "
+    "la Superintendencia, y desde la v2 lleva los ids de COMBUSES."
+)
+
 # ===========================================================================
-h1("8. Recomendaciones de consumo")
+h1("9. Recomendaciones de consumo")
 
 vineta_rica(
     [("Una consulta diaria", "b"), (" del día anterior cubre la operación normal.", "")]
@@ -610,6 +699,13 @@ vineta_rica(
 vineta_rica([("No asumir orden", "b"), (" en el arreglo actividades.", "")])
 vineta_rica(
     [
+        ("Consultar /actividades a diario.", "b"),
+        (" Un id de actividades que no esté en la tabla de homologación de "
+         "GESMOVIL indica que COMBUSES agregó una actividad.", ""),
+    ]
+)
+vineta_rica(
+    [
         ("Conservar el ", "b"),
         ("message", "bc"),
         (" de los errores.", "b"),
@@ -618,13 +714,19 @@ vineta_rica(
 )
 
 # ===========================================================================
-h1("9. Soporte")
+h1("10. Soporte")
 
 par("Dudas del contrato, credenciales o incidencias: área de desarrollo de COMBUSES.")
 
 h2("Para cerrar la integración se requiere de GESMOVIL")
 
-numerada([("El catálogo oficial de actividades de alistamiento con sus ids (sección 6).", "")], con_siguiente=True)
+numerada(
+    [
+        ("Copia de la tabla de homologación que construyan (id de COMBUSES → id "
+         "oficial), para que COMBUSES pueda verificar lo que se reporta a su nombre.", ""),
+    ],
+    con_siguiente=True,
+)
 numerada([("Confirmación de que el consumo funciona con la credencial entregada.", "")], con_siguiente=True)
 numerada([("La IP o rango de IP desde donde consumirán, si se desea restringir el acceso.", "")], con_siguiente=True)
 numerada(
