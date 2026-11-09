@@ -35,6 +35,13 @@
  *     sicov_homolog_actividades y respondia 503 si faltaba alguna traduccion.
  *     Esa tabla sigue en la base, pero la API ya no la lee.
  *
+ *   - La forma de /alistamientos es la que pidio GESMOVIL el 9-nov-2026 (v3),
+ *     no la literal del manual: detalleActividades es una lista de
+ *     { id, descripcion }, fechaAlistamiento lleva solo la fecha y las cedulas
+ *     van como numero. GESMOVIL rechazo la v2, que seguia el manual al pie de
+ *     la letra (detalle como texto unido por comas, fecha con hora, cedulas
+ *     como texto). /mantenimientos sigue como en el manual: no lo objetaron.
+ *
  *   - Los despachos y llegadas del manual no estan aqui: esta plataforma cubre
  *     alistamiento y mantenimiento. Pedirlos devuelve 404 con la lista de lo
  *     que si existe, en vez de un error mudo.
@@ -46,7 +53,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const VERSION = "v2";
+const VERSION = "v3";
 
 // Alcance que debe tener la credencial en api_clientes.apis. La misma tabla
 // sirve a otras APIs externas del proyecto, asi que el alcance se valida
@@ -121,22 +128,19 @@ function txt(valor: unknown): string | null {
 }
 
 /**
- * Hora HH:MM:SS del dia colombiano de un timestamptz.
- * Se convierte a America/Bogota y no se deja en UTC: la hora que el reporte
- * debe llevar es la de la operacion, no la del servidor.
+ * Numero de identificacion como numero JSON, que es como lo pide GESMOVIL y
+ * como lo trae el ejemplo del manual.
+ *
+ * Solo se convierte lo que es un numero sin perdida: digitos, sin cero a la
+ * izquierda (Number("0123") seria 123, otra persona) y dentro del rango entero
+ * seguro. Lo demas sale como texto tal cual. Un documento que no sea una
+ * cedula limpia tiene que llegar a GESMOVIL reconocible, no convertido en
+ * otro numero ni en null.
  */
-function horaDe(iso: unknown): string {
-  const s = txt(iso);
-  if (!s) return "";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("en-GB", {
-    timeZone: "America/Bogota",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
+function numeroId(valor: unknown): number | string | null {
+  const s = txt(valor);
+  if (!s) return null;
+  return /^[1-9]\d{0,14}$/.test(s) ? Number(s) : s;
 }
 
 interface Rango {
@@ -417,13 +421,16 @@ async function leerCatalogo(db: ReturnType<typeof createClient>): Promise<Activi
 
 interface Actividades {
   ids: number[];
+  /** Para /alistamientos (v3): una entrada por actividad. */
+  lista: { id: number; descripcion: string }[];
+  /** Para /mantenimientos: las descripciones unidas por comas, como el manual. */
   detalle: string;
 }
 
 /**
- * Los dos campos del manual a partir de las actividades marcadas en un
- * registro. Salen en el orden del checklist y no en el de captura, y los ids y
- * las descripciones en el mismo orden entre si.
+ * Los campos de actividades a partir de las marcadas en un registro. Salen en
+ * el orden del checklist y no en el de captura, y los ids y las descripciones
+ * en el mismo orden entre si.
  *
  * Recorrer el catalogo en vez de las marcas no pierde nada: la llave foranea
  * garantiza que toda actividad marcada existe en el catalogo.
@@ -438,6 +445,7 @@ function aplanarActividades(crudas: unknown, catalogo: ActividadCatalogo[]): Act
   const elegidas = catalogo.filter((a) => marcadas.has(a.id));
   return {
     ids: elegidas.map((a) => a.id),
+    lista: elegidas.map((a) => ({ id: a.id, descripcion: a.descripcion })),
     detalle: elegidas.map((a) => a.descripcion).join(", "),
   };
 }
@@ -472,7 +480,7 @@ async function endpointAlistamientos(
     db
       .from("sicov_alistamientos")
       .select(`
-        id, placa, fecha, registrado_en,
+        id, placa, fecha,
         responsable_tipo_id, responsable_num_id, responsable_nombre,
         conductor_tipo_id, conductor_num_id, conductor_nombre,
         sicov_alistamiento_actividades ( actividad_id )
@@ -488,24 +496,25 @@ async function endpointAlistamientos(
 
   const salida = registros.map((f: Fila) => {
     const act = aplanarActividades(f.sicov_alistamiento_actividades, catalogo);
+    // Campos en el orden del ejemplo de GESMOVIL. A un parser JSON le da igual,
+    // pero asi su ejemplo y nuestra respuesta se comparan a ojo.
     return {
       alistamiento_id: f.id,
+      // Solo la fecha, AAAA-MM-DD, del dia colombiano: asi la pidio GESMOVIL y
+      // asi la trae el ejemplo del manual. Hasta la v2 iba con la hora.
+      fechaAlistamiento: txt(f.fecha),
       placa: txt(f.placa),
-      // El manual describe fechaAlistamiento como fecha y hora, y su ejemplo
-      // trae solo fecha. Se manda fecha y hora: es mas informacion, cabe en el
-      // formato del ejemplo, y la hora real esta en registrado_en.
-      fechaAlistamiento: `${txt(f.fecha)} ${horaDe(f.registrado_en)}`.trim(),
       responsable: {
         tipoIdentificacion: Number(f.responsable_tipo_id),
-        numeroIdentificacion: txt(f.responsable_num_id),
+        numeroIdentificacion: numeroId(f.responsable_num_id),
         nombre: txt(f.responsable_nombre),
       },
       conductor: {
         tipoIdentificacion: Number(f.conductor_tipo_id),
-        numeroIdentificacion: txt(f.conductor_num_id),
+        numeroIdentificacion: numeroId(f.conductor_num_id),
         nombre: txt(f.conductor_nombre),
       },
-      detalleActividades: act.detalle,
+      detalleActividades: act.lista,
       actividades: act.ids,
     };
   });

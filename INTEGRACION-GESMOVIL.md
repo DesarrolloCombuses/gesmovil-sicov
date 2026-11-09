@@ -4,7 +4,8 @@ Documento para el equipo técnico de GESMOVIL.
 
 COMBUSES expone por API los alistamientos y mantenimientos de su flota. El
 contrato sigue el *Manual de apis requeridas para integración
-alistamiento-mantenimientos-despachos*.
+alistamiento-mantenimientos-despachos*, con la respuesta de `/alistamientos` en
+el formato que indicó GESMOVIL el 9 de noviembre de 2026.
 
 > **Nota interna (no va en el documento que se envía):** este archivo es la
 > fuente del Word que se entrega a GESMOVIL, y está escrito para ellos. El
@@ -84,19 +85,22 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
   "data": [
     {
       "alistamiento_id": 3,
+      "fechaAlistamiento": "2026-09-22",
       "placa": "EQR790",
-      "fechaAlistamiento": "2026-09-22 17:37:56",
       "responsable": {
         "tipoIdentificacion": 1,
-        "numeroIdentificacion": "12345678",
+        "numeroIdentificacion": 12345678,
         "nombre": "NOMBRE DEL RESPONSABLE"
       },
       "conductor": {
         "tipoIdentificacion": 1,
-        "numeroIdentificacion": "87654321",
+        "numeroIdentificacion": 87654321,
         "nombre": "NOMBRE DEL CONDUCTOR"
       },
-      "detalleActividades": "Niveles de aceite de motor, Fugas del motor",
+      "detalleActividades": [
+        { "id": 1000, "descripcion": "Niveles de aceite de motor" },
+        { "id": 1001, "descripcion": "Fugas del motor" }
+      ],
       "actividades": [1000, 1001]
     }
   ]
@@ -108,15 +112,16 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/alist
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `alistamiento_id` | entero | Consecutivo único y estable |
+| `fechaAlistamiento` | texto | `AAAA-MM-DD`, día colombiano del alistamiento |
 | `placa` | texto | Placa del vehículo |
-| `fechaAlistamiento` | texto | Fecha y hora, en hora de Colombia (`-05:00`) |
 | `responsable` | objeto | Responsable del proceso |
 | `conductor` | objeto | Conductor que registró |
-| `actividades` | arreglo | Ids de actividad de COMBUSES (sección 7) |
-| `detalleActividades` | texto | Descripciones de esos ids, en el mismo orden |
+| `detalleActividades` | arreglo | Un objeto `{ id, descripcion }` por actividad |
+| `actividades` | arreglo | Ids de actividad de COMBUSES (sección 7), en el mismo orden que `detalleActividades` |
 
-`tipoIdentificacion: 1` es cédula de ciudadanía. Las cédulas y los nombres de
-los ejemplos son ficticios: la API entrega los reales.
+`numeroIdentificacion` es numérico y `tipoIdentificacion: 1` es cédula de
+ciudadanía. Las cédulas y los nombres de los ejemplos son ficticios: la API
+entrega los reales.
 
 **La homologación al catálogo de la Superintendencia la realiza GESMOVIL.** Los
 ids de `actividades` son los de COMBUSES, desde el 1000, y su significado está
@@ -164,7 +169,8 @@ La flota cubierta es la de la ruta **AEROPUERTO**: 54 vehículos, internos 703 a
 | `detalleActividades` | texto | Actividades ejecutadas |
 
 Este endpoint **no devuelve un arreglo `actividades`**: el manual pide el
-detalle como texto.
+detalle como texto. Aquí `numeroIdentificacion` también viaja como texto; el
+cambio de formato de la `v3` aplica solo a `/alistamientos`.
 
 ## 7. `GET /actividades`
 
@@ -198,7 +204,7 @@ curl "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil/activ
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `id` | entero | El id que viaja en `actividades` |
+| `id` | entero | El id que viaja en `actividades` y en `detalleActividades` |
 | `descripcion` | texto | La que viaja en `detalleActividades` |
 | `grupo` | texto | Agrupación dentro del checklist |
 | `activa` | booleano | `false` si se retiró del checklist |
@@ -209,9 +215,10 @@ Las actividades retiradas siguen apareciendo con `activa: false`, porque los
 registros anteriores pueden llevarlas. Los ids no se reutilizan: si COMBUSES
 agrega una actividad, aparece aquí con un id nuevo.
 
-Para homologar conviene usar el arreglo `actividades` y no el texto de
-`detalleActividades`. Ese texto une las descripciones con comas, y algunas
-descripciones tienen comas propias.
+En `/alistamientos` cada actividad viaja con su `id`, que es lo que conviene
+usar para homologar. En `/mantenimientos` el detalle es un texto que une las
+descripciones con comas, y algunas descripciones tienen comas propias: no
+conviene separarlo por comas.
 
 ## 8. Códigos de respuesta
 
@@ -264,12 +271,15 @@ transmitirse a la Superintendencia.
 
 | Cabecera | Contenido |
 |---|---|
-| `X-Api-Version` | Versión del contrato (`v2`) |
+| `X-Api-Version` | Versión del contrato (`v3`) |
 | `X-Total-Registros` | Número de elementos en `data` |
 | `Cache-Control` | `no-store` |
 
-La `v2` cambió el contenido de `actividades`: en la `v1` llevaba ids oficiales
-de la Superintendencia, y desde la `v2` lleva los ids de COMBUSES.
+La `v3` dejó `/alistamientos` en el formato que indicó GESMOVIL:
+`fechaAlistamiento` sin hora, `numeroIdentificacion` numérico y
+`detalleActividades` como arreglo de `{ id, descripcion }`. La `v2` había
+cambiado el contenido de `actividades`: en la `v1` llevaba ids oficiales de la
+Superintendencia, y desde la `v2` lleva los ids de COMBUSES.
 
 ## 10. Recomendaciones de consumo
 

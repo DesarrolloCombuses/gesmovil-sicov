@@ -7,6 +7,16 @@ de COMBUSES, y hacer ellos la homologación. La API v2 hace eso y está en
 producción desde el 4-nov-2026. Comprobado el 5-nov: `X-Api-Version: v2`,
 `/actividades` con 40 actividades y `/alistamientos` con 49 registros del 4-nov.
 
+> **Seguimiento del 9-nov-2026: GESMOVIL no aceptó el formato de la v2.**
+> Mandaron `Ajuste api combuses.docx` (raíz del proyecto, fuera de git porque
+> trae cédulas reales) con la forma que esperan: `detalleActividades` como
+> lista de `{ id, descripcion }`, `fechaAlistamiento` sin hora y
+> `numeroIdentificacion` numérico. Siguen homologando con nuestros ids. La v3
+> lo implementa y está en producción desde el 9-nov (verificado: 1569
+> alistamientos del 1-oct al 7-nov, todos con esa forma). El correo y la guía
+> v3 están en `Documentos nuevos para GESMOVIL/`, también fuera de git. El
+> mensaje de abajo es el de la v2, ya enviado.
+
 ---
 
 ## Adjuntos

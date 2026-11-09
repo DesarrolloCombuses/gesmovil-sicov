@@ -32,7 +32,7 @@ FONDO_CODIGO = "F4F6F9"
 FONDO_CABECERA = "1A4FA0"
 FONDO_FILA = "F7F9FC"
 
-FECHA = "5 de noviembre de 2026"
+FECHA = "9 de noviembre de 2026"
 BASE_URL = "https://cbplebkmxrkaafqdhiyi.supabase.co/functions/v1/sicov-gesmovil"
 
 doc = Document()
@@ -290,7 +290,8 @@ p = doc.add_paragraph()
 p.paragraph_format.space_after = Pt(14)
 r = p.add_run(
     "Consulta de alistamientos y mantenimientos. Contrato según el Manual de "
-    "apis requeridas para integración alistamiento-mantenimientos-despachos."
+    "apis requeridas para integración alistamiento-mantenimientos-despachos, con "
+    "/alistamientos en el formato que indicó GESMOVIL el 9 de noviembre de 2026."
 )
 r.font.size = Pt(11)
 r.font.color.rgb = GRIS
@@ -302,7 +303,7 @@ tabla(
         ["URL base", "|" + BASE_URL],
         ["Autenticación", "|X-API-Key"],
         ["Formato", "JSON"],
-        ["Versión del contrato", "|v2"],
+        ["Versión del contrato", "|v3"],
         ["Fecha del documento", FECHA],
     ],
     [1.5, 5.0],
@@ -412,19 +413,22 @@ codigo(
         '  "data": [',
         "    {",
         '      "alistamiento_id": 3,',
+        '      "fechaAlistamiento": "2026-09-22",',
         '      "placa": "EQR790",',
-        '      "fechaAlistamiento": "2026-09-22 17:37:56",',
         '      "responsable": {',
         '        "tipoIdentificacion": 1,',
-        '        "numeroIdentificacion": "12345678",',
+        '        "numeroIdentificacion": 12345678,',
         '        "nombre": "NOMBRE DEL RESPONSABLE"',
         "      },",
         '      "conductor": {',
         '        "tipoIdentificacion": 1,',
-        '        "numeroIdentificacion": "87654321",',
+        '        "numeroIdentificacion": 87654321,',
         '        "nombre": "NOMBRE DEL CONDUCTOR"',
         "      },",
-        '      "detalleActividades": "Niveles de aceite de motor, Fugas del motor",',
+        '      "detalleActividades": [',
+        '        { "id": 1000, "descripcion": "Niveles de aceite de motor" },',
+        '        { "id": 1001, "descripcion": "Fugas del motor" }',
+        "      ],",
         '      "actividades": [1000, 1001]',
         "    }",
         "  ]",
@@ -438,18 +442,24 @@ tabla(
     ["Campo", "Tipo", "Descripción"],
     [
         ["|alistamiento_id", "entero", "Consecutivo único y estable"],
+        ["|fechaAlistamiento", "texto", "AAAA-MM-DD, día colombiano del alistamiento"],
         ["|placa", "texto", "Placa del vehículo"],
-        ["|fechaAlistamiento", "texto", "Fecha y hora, en hora de Colombia (-05:00)"],
         ["|responsable", "objeto", "Responsable del proceso"],
         ["|conductor", "objeto", "Conductor que registró"],
-        ["|actividades", "arreglo", "Ids de actividad de COMBUSES (sección 6)"],
-        ["|detalleActividades", "texto", "Descripciones de esos ids, en el mismo orden"],
+        ["|detalleActividades", "arreglo", "Un objeto { id, descripcion } por actividad"],
+        [
+            "|actividades",
+            "arreglo",
+            "Ids de actividad de COMBUSES (sección 6), en el mismo orden que detalleActividades",
+        ],
     ],
     [1.7, 0.9, 3.9],
 )
 
 rico(
     [
+        ("numeroIdentificacion", "c"),
+        (" es numérico y ", ""),
         ("tipoIdentificacion: 1", "c"),
         (
             " es cédula de ciudadanía. Las cédulas y los nombres de los ejemplos son"
@@ -533,7 +543,11 @@ rico(
         ("Este endpoint ", ""),
         ("no devuelve un arreglo ", "b"),
         ("actividades", "bc"),
-        (": el manual pide el detalle como texto.", ""),
+        (": el manual pide el detalle como texto. Aquí ", ""),
+        ("numeroIdentificacion", "c"),
+        (" también viaja como texto; el cambio de formato de la v3 aplica solo a ", ""),
+        ("/alistamientos", "c"),
+        (".", ""),
     ]
 )
 
@@ -577,7 +591,7 @@ h2("Campos")
 tabla(
     ["Campo", "Tipo", "Descripción"],
     [
-        ["|id", "entero", "El id que viaja en actividades"],
+        ["|id", "entero", "El id que viaja en actividades y en detalleActividades"],
         ["|descripcion", "texto", "La que viaja en detalleActividades"],
         ["|grupo", "texto", "Agrupación dentro del checklist"],
         ["|activa", "booleano", "false si se retiró del checklist"],
@@ -595,12 +609,14 @@ par(
 
 rico(
     [
-        ("Para homologar conviene usar el arreglo ", ""),
-        ("actividades", "c"),
-        (" y no el texto de ", ""),
-        ("detalleActividades", "c"),
-        (". Ese texto une las descripciones con comas, y algunas descripciones "
-         "tienen comas propias.", ""),
+        ("En ", ""),
+        ("/alistamientos", "c"),
+        (" cada actividad viaja con su ", ""),
+        ("id", "c"),
+        (", que es lo que conviene usar para homologar. En ", ""),
+        ("/mantenimientos", "c"),
+        (" el detalle es un texto que une las descripciones con comas, y algunas "
+         "descripciones tienen comas propias: no conviene separarlo por comas.", ""),
     ]
 )
 
@@ -676,7 +692,7 @@ h1("8. Cabeceras de respuesta")
 tabla(
     ["Cabecera", "Contenido"],
     [
-        ["|X-Api-Version", "Versión del contrato (v2)"],
+        ["|X-Api-Version", "Versión del contrato (v3)"],
         ["|X-Total-Registros", "Número de elementos en data"],
         ["|Cache-Control", "|no-store"],
     ],
@@ -684,8 +700,11 @@ tabla(
 )
 
 par(
-    "La v2 cambió el contenido de actividades: en la v1 llevaba ids oficiales de "
-    "la Superintendencia, y desde la v2 lleva los ids de COMBUSES."
+    "La v3 dejó /alistamientos en el formato que indicó GESMOVIL: "
+    "fechaAlistamiento sin hora, numeroIdentificacion numérico y "
+    "detalleActividades como arreglo de { id, descripcion }. La v2 había cambiado "
+    "el contenido de actividades: en la v1 llevaba ids oficiales de la "
+    "Superintendencia, y desde la v2 lleva los ids de COMBUSES."
 )
 
 # ===========================================================================

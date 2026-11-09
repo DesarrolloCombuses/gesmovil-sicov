@@ -28,6 +28,13 @@ actividades»), y hasta entonces la API traducía de nuestro lado y respondía 5
 mientras faltaran traducciones. La tabla `sicov_homolog_actividades` sigue en
 la base, pero la API ya no la lee.
 
+La forma de `/alistamientos` tampoco es la literal del manual. GESMOVIL rechazó
+la v2 y el 9-nov-2026 mandó el formato que espera (`Ajuste api combuses.docx`):
+`detalleActividades` como lista de `{ id, descripcion }`, `fechaAlistamiento`
+solo con la fecha y `numeroIdentificacion` como número. Eso es la v3.
+`/mantenimientos` sigue como en el manual, con el detalle y la cédula como
+texto, porque no lo objetaron.
+
 Eso es lo que se gana al diseñar el modelo desde el manual en vez de adaptar
 tablas que ya existían para otra cosa. Cada campo que el manual exige tiene su
 columna, así que no hay huecos que rellenar al responder.
@@ -429,7 +436,8 @@ en una lista pública y antes de reportarlo.
 - **Errata del manual**, por si GESMOVIL pregunta: los ejemplos JSON de
   despachos tienen comas finales sobrantes (no son JSON válido); las tablas de
   despachos numeran «7.3» tres veces; `fechaAlistamiento` se describe como
-  fecha y hora pero el ejemplo trae solo fecha (aquí se envían ambas).
+  fecha y hora pero el ejemplo trae solo fecha (hasta la v2 se enviaban
+  ambas; desde la v3, solo la fecha, como lo pidió GESMOVIL).
 - **Sin type-check local.** No hay Deno ni Node en la máquina de desarrollo, así
   que el TypeScript de las edge functions no se ha compilado. El primer
   `functions deploy` es lo que lo confirmaría.
